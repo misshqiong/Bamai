@@ -52,3 +52,21 @@ def test_settings_page_keys_exist_in_both_languages():
     }
     for language in ("zh", "en"):
         assert required <= set(dictionaries[language])
+
+
+def test_toolbox_keys_exist_in_both_languages():
+    dictionaries = load_dictionaries()
+    required = {
+        "nav.toolbox", "toolbox.title", "toolbox.run", "toolbox.running",
+        "toolbox.result", "toolbox.raw", "toolbox.explain", "toolbox.auth.title",
+        *(f"toolbox.probe.{probe}.{field}" for probe in (
+            "ping", "traceroute", "dns", "port", "netquality", "memory_check",
+            "wifi", "battery", "capture",
+        ) for field in ("name", "desc")),
+        *(f"toolbox.param.{name}" for name in (
+            "host", "count", "domain", "recordType", "port", "windowMinutes",
+            "interface", "filter", "duration", "maxPackets",
+        )),
+    }
+    for language in ("zh", "en"):
+        assert required <= set(dictionaries[language])

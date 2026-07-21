@@ -14,6 +14,7 @@ Bamai（把脉）是面向 macOS Apple Silicon 的本地系统监控助手。*Ta
 - CPU、内存、磁盘和网络异常的后台 AI 诊断
 - Ollama 不可用时自动降级，监控和搜索功能继续工作
 - 运行时切换本地模型、语言、温度和上下文长度，无需重启
+- 插件化本地工具箱：网络、DNS、端口、Wi-Fi、电池、内存与受控抓包诊断
 
 ## 环境要求
 
@@ -86,6 +87,24 @@ Agent 最多进行 6 轮工具调用，所有回答必须依据本机工具返�
 - `GET/POST /api/settings`：读取或即时更新运行时设置
 - `GET /api/ollama/models`：已安装与推荐模型
 - `POST /api/ollama/pull`、`GET /api/ollama/pull/status`：后台下载模型与查询进度
+- `GET /api/toolbox`、`POST /api/toolbox/{id}/run`：列出并运行诊断工具
+- `GET /api/toolbox/jobs/{job_id}`、`POST /api/toolbox/{id}/explain`：轮询结果与 AI 解读
+
+## 工具箱与抓包安全边界
+
+所有探测命令都以参数列表直接启动，不经过 shell。抓包默认只保留 96 字节包头、不做域名反解，最长 60 秒、最多 2000 包；pcap 只写入 `~/.bamai/captures/`，不会进入 SQLite 或上传到网络。即使只保存包头，pcap 仍可能包含本机地址、端口和少量协议元数据，请仅在需要时运行并自行管理文件。
+
+首次使用抓包时需按页面引导执行：
+
+```bash
+sudo ./scripts/enable-capture.sh
+```
+
+该脚本采用 Wireshark 同类的 `access_bpf` 用户组方案，不会让 Bamai 以 root 运行。完整撤销授权：
+
+```bash
+sudo ./scripts/disable-capture.sh
+```
 - `POST /api/chat`：本地 Agent 对话
 - `WS /ws/realtime`：3 秒实时指标
 

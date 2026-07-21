@@ -35,6 +35,13 @@ export const api = {
     body: JSON.stringify({model}),
   }),
   pullStatus: () => request("/api/ollama/pull/status"),
+  toolbox: () => request("/api/toolbox"),
+  runProbe: (probeId, params) => request(`/api/toolbox/${encodeURIComponent(probeId)}/run`, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({params}),
+  }),
+  probeJob: jobId => request(`/api/toolbox/jobs/${encodeURIComponent(jobId)}`),
+  explainProbe: probeId => request(`/api/toolbox/${encodeURIComponent(probeId)}/explain`, {method: "POST"}),
   chat: messages => request("/api/chat", {
     method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({messages}),

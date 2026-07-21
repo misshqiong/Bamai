@@ -61,3 +61,19 @@ def build_health_explanation_prompt(health: dict, language: str = "zh") -> str:
         "请把下面的当前 Mac 健康结果解释给完全不懂技术的用户。用一小段日常语言说明哪些正常、哪些需要留意，"
         f"避免未经解释的术语，只给安全且能立即执行的建议。健康数据：{payload}"
     )
+
+
+def build_probe_explanation_prompt(
+    probe_id: str, result: dict, language: str = "zh"
+) -> str:
+    payload = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
+    if normalize_language(language) == "en":
+        return (
+            f"Explain this {probe_id} diagnostic result to a non-technical Mac user. "
+            "Use plain language, state what looks normal or unusual, and give at most three safe "
+            f"next steps. Do not invent facts beyond the result. Result JSON: {payload}"
+        )
+    return (
+        f"请用普通 Mac 用户能听懂的日常语言解释这次 {probe_id} 诊断结果。说明哪些正常、哪些需要留意，"
+        f"最多给三条安全建议，不要编造结果之外的信息。结果 JSON：{payload}"
+    )

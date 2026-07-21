@@ -1,6 +1,7 @@
 import {api} from "./api.js";
 import {initChat} from "./chat.js";
 import {initSettings} from "./settings.js";
+import {initToolbox} from "./toolbox.js";
 import {HistoryChart, RealtimeCharts, formatBytes, formatRate} from "./charts.js";
 import {formatDateTime, formatNumber, initI18n, t} from "./i18n.js";
 
@@ -251,6 +252,7 @@ function bindControls() {
 bindControls();
 initChat();
 initSettings();
+initToolbox();
 connectRealtime();
 loadOverview();
 loadHealth();

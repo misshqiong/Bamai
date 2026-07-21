@@ -34,6 +34,7 @@
       <nav class="tabs" aria-label="主视图">
         <button class="tab active" data-view="dashboard" data-i18n="nav.dashboard">仪表盘</button>
         <button class="tab" data-view="search" data-i18n="nav.search">文件搜索</button>
+        <button class="tab" data-view="toolbox" data-i18n="nav.toolbox">工具箱</button>
         <button class="tab" data-view="settings" data-i18n="nav.settings">设置</button>
       </nav>
 
@@ -130,6 +131,14 @@
             <div class="settings-actions"><span id="settings-message" aria-live="polite"></span><button id="settings-save" class="primary" type="submit" data-i18n="settings.save">保存设置</button></div>
           </form>
         </section>
+      </section>
+
+      <section id="toolbox-view" class="view">
+        <section class="panel toolbox-panel">
+          <div><p class="eyebrow" data-i18n="toolbox.eyebrow">本机诊断</p><h2 data-i18n="toolbox.title">工具箱</h2><p class="settings-intro" data-i18n="toolbox.intro">选择工具进行一次安全、只读的本机检查。</p></div>
+          <div id="toolbox-cards" class="toolbox-cards"><p class="loading" data-i18n="toolbox.loading">正在加载工具…</p></div>
+        </section>
+        <section id="toolbox-detail" class="panel toolbox-detail hidden"></section>
       </section>
     </main>
 

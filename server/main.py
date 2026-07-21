@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Literal
 
 import httpx
@@ -22,7 +24,7 @@ from .agent.ollama_client import (
     OllamaError,
     OllamaUnavailable,
 )
-from .agent.prompts import build_health_explanation_prompt
+from .agent.prompts import build_health_explanation_prompt, build_probe_explanation_prompt
 from .agent.tools import ToolExecutor
 from .collector import Collector, list_processes
 from .db import Database, METRIC_COLUMNS
@@ -31,6 +33,9 @@ from .model_pull import ModelPullManager, RECOMMENDED_MODELS
 from .rules import HealthEvaluator, RuleEngine
 from .search.files import find_large_files, mdfind_search
 from .settings import SettingsError, SettingsStore
+from .toolbox.base import ProbeValidationError
+from .toolbox.jobs import ProbeJobManager
+from .toolbox.registry import ProbeRegistry, build_registry
 
 
 logging.basicConfig(
@@ -70,6 +75,9 @@ def create_app(
     agent_client: OllamaClient | None = None,
     settings_store: SettingsStore | None = None,
     pull_manager: ModelPullManager | None = None,
+    toolbox_registry: ProbeRegistry | None = None,
+    toolbox_jobs: ProbeJobManager | None = None,
+    captures_dir: str | Path = config.CAPTURES_DIR,
 ) -> FastAPI:
     if collector_enabled is None:
         collector_enabled = os.environ.get("BAMAI_DISABLE_COLLECTOR") != "1"
@@ -79,9 +87,18 @@ def create_app(
         if application.state.db is None:
             config.migrate_legacy_data_dir()
             application.state.db = Database()
+        if application.state.toolbox_registry is None:
+            application.state.toolbox_registry = build_registry(
+                application.state.db, application.state.captures_dir
+            )
+        if application.state.toolbox_jobs is None:
+            application.state.toolbox_jobs = ProbeJobManager(application.state.toolbox_registry)
         if application.state.agent is None:
             application.state.agent = OllamaClient(
-                ToolExecutor(application.state.db),
+                ToolExecutor(
+                    application.state.db,
+                    probe_registry=application.state.toolbox_registry,
+                ),
                 settings_store=application.state.settings,
             )
         if collector_enabled:
@@ -103,6 +120,8 @@ def create_app(
             application.state.collector.stop()
         if application.state.diagnoser is not None:
             application.state.diagnoser.close()
+        if application.state.toolbox_jobs is not None:
+            application.state.toolbox_jobs.close()
 
     application = FastAPI(title=config.APP_NAME, lifespan=lifespan)
     application.state.db = database
@@ -111,6 +130,9 @@ def create_app(
     application.state.diagnoser = None
     application.state.settings = settings_store or SettingsStore()
     application.state.pull_manager = pull_manager or ModelPullManager()
+    application.state.toolbox_registry = toolbox_registry
+    application.state.toolbox_jobs = toolbox_jobs
+    application.state.captures_dir = Path(captures_dir).expanduser()
     application.state.language = LanguageState(application.state.settings.read()["language"])
 
     @application.middleware("http")
@@ -131,11 +153,25 @@ def create_app(
     def active_agent() -> OllamaClient:
         client = application.state.agent
         if client is None:
-            client = OllamaClient(
-                ToolExecutor(active_db()), settings_store=application.state.settings
-            )
+            client = OllamaClient(ToolExecutor(
+                active_db(), probe_registry=active_toolbox_registry()
+            ), settings_store=application.state.settings)
             application.state.agent = client
         return client
+
+    def active_toolbox_registry() -> ProbeRegistry:
+        registry = application.state.toolbox_registry
+        if registry is None:
+            registry = build_registry(active_db(), application.state.captures_dir)
+            application.state.toolbox_registry = registry
+        return registry
+
+    def active_toolbox_jobs() -> ProbeJobManager:
+        jobs = application.state.toolbox_jobs
+        if jobs is None:
+            jobs = ProbeJobManager(active_toolbox_registry())
+            application.state.toolbox_jobs = jobs
+        return jobs
 
     @application.get("/", include_in_schema=False)
     def index() -> FileResponse:
@@ -241,6 +277,69 @@ def create_app(
     @application.get("/api/ollama/pull/status")
     def pull_status() -> dict:
         return application.state.pull_manager.status()
+
+    @application.get("/api/toolbox")
+    def toolbox_specs() -> dict:
+        return {"items": [spec.to_dict() for spec in active_toolbox_registry().all()]}
+
+    @application.post("/api/toolbox/{probe_id}/run", status_code=202)
+    def run_probe(probe_id: str, payload: dict) -> dict:
+        params = (
+            payload["params"]
+            if set(payload) == {"params"} and isinstance(payload.get("params"), dict)
+            else payload
+        )
+        try:
+            return active_toolbox_jobs().start(probe_id, params)
+        except ProbeValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @application.get("/api/toolbox/jobs/{job_id}")
+    def probe_job(job_id: str) -> dict:
+        job = active_toolbox_jobs().get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="探测任务不存在")
+        return job
+
+    @application.post("/api/toolbox/{probe_id}/explain")
+    async def explain_probe(probe_id: str) -> dict:
+        try:
+            active_toolbox_registry().get(probe_id)
+        except ProbeValidationError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        latest = active_toolbox_jobs().latest(probe_id)
+        if latest is None:
+            raise HTTPException(status_code=404, detail="该工具还没有可解读的结果")
+        client = active_agent()
+        status = await client.status()
+        if not status["available"] or not status["model_pulled"]:
+            raise HTTPException(status_code=503, detail=f"Ollama 未就绪。请运行：{INSTALL_GUIDE}")
+        language = application.state.language.get()
+        prompt = build_probe_explanation_prompt(probe_id, latest.to_dict(), language)
+        try:
+            result = await asyncio.wait_for(
+                client.chat([{"role": "user", "content": prompt}], language=language),
+                timeout=config.HEALTH_EXPLAIN_TIMEOUT_SECONDS,
+            )
+        except OllamaUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except TimeoutError as exc:
+            raise HTTPException(status_code=504, detail="AI probe explanation timed out") from exc
+        except OllamaError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return {"reply": result.reply}
+
+    @application.get("/api/toolbox/captures/{name}")
+    def download_capture(name: str) -> FileResponse:
+        if not re.fullmatch(r"[A-Za-z0-9._-]+\.pcap", name):
+            raise HTTPException(status_code=404, detail="抓包文件不存在")
+        captures = application.state.captures_dir.resolve()
+        path = (captures / name).resolve()
+        if path.parent != captures or not path.is_file():
+            raise HTTPException(status_code=404, detail="抓包文件不存在")
+        return FileResponse(
+            path, filename=name, media_type="application/vnd.tcpdump.pcap"
+        )
 
     @application.post("/api/chat")
     async def chat(payload: ChatRequest, request: Request) -> dict:

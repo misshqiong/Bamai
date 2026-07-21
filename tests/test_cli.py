@@ -11,6 +11,8 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_cli_scripts_have_valid_bash_syntax_and_compatibility_wrapper():
     subprocess.run(["bash", "-n", "./bamai"], cwd=ROOT, check=True)
     subprocess.run(["bash", "-n", "run.sh"], cwd=ROOT, check=True)
+    subprocess.run(["bash", "-n", "scripts/enable-capture.sh"], cwd=ROOT, check=True)
+    subprocess.run(["bash", "-n", "scripts/disable-capture.sh"], cwd=ROOT, check=True)
     assert os.access(ROOT / "bamai", os.X_OK)
     lines = (ROOT / "run.sh").read_text().splitlines()
     assert lines == [

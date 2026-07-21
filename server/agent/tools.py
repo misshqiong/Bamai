@@ -10,6 +10,7 @@ from typing import Any, Callable, Mapping
 from ..collector import list_processes, search_running_processes
 from ..db import METRIC_COLUMNS, Database
 from ..search.files import find_large_files, mdfind_search
+from ..toolbox.registry import ProbeRegistry, build_registry
 
 
 def _function(name: str, description: str, properties: dict, required: list[str]) -> dict:
@@ -56,7 +57,15 @@ TOOL_DEFINITIONS = [
     _function("search_processes", "按名称或命令行关键词搜索运行中的进程。", {
         "keyword": {"type": "string"},
     }, ["keyword"]),
+    _function("run_probe", "运行一个安全的本机网络或系统诊断探测。", {
+        "probe_id": {"type": "string", "enum": [
+            "ping", "dns", "port", "wifi", "battery", "memory_check",
+        ]},
+        "params": {"type": "object", "additionalProperties": True},
+    }, ["probe_id", "params"]),
 ]
+
+AGENT_PROBE_ALLOWLIST = {"ping", "dns", "port", "wifi", "battery", "memory_check"}
 
 
 class ToolError(ValueError):
@@ -81,12 +90,14 @@ class ToolExecutor:
         process_search: Callable[[str, int], list[dict]] = search_running_processes,
         file_search: Callable[..., list[dict]] = mdfind_search,
         large_file_search: Callable[..., dict] = find_large_files,
+        probe_registry: ProbeRegistry | None = None,
     ) -> None:
         self.db = db
         self.process_provider = process_provider
         self.process_search = process_search
         self.file_search = file_search
         self.large_file_search = large_file_search
+        self.probe_registry = probe_registry
 
     def execute(self, name: str, arguments: Mapping[str, Any] | None = None) -> ToolResult:
         args = dict(arguments or {})
@@ -99,6 +110,7 @@ class ToolExecutor:
             "find_large_files": self._large_files,
             "search_files": self._search_files,
             "search_processes": self._search_processes,
+            "run_probe": self._run_probe,
         }
         handler = handlers.get(name)
         if handler is None:
@@ -195,6 +207,21 @@ class ToolExecutor:
         rows = self.process_search(keyword, 20)
         return ToolResult(_compact(rows), f"搜索了包含“{keyword}”的运行中进程，找到 {len(rows)} 项")
 
+    def _run_probe(self, args: dict) -> ToolResult:
+        self._only(args, {"probe_id", "params"})
+        probe_id = self._choice(args, "probe_id", AGENT_PROBE_ALLOWLIST)
+        params = args.get("params")
+        if not isinstance(params, dict):
+            raise ToolError("params 必须是对象")
+        if self.probe_registry is None:
+            self.probe_registry = build_registry(self.db)
+        try:
+            result = self.probe_registry.run(probe_id, params)
+        except (ValueError, PermissionError) as exc:
+            raise ToolError(str(exc)) from exc
+        data = _compact(result.to_dict())
+        return ToolResult(data, f"运行了 {probe_id} 诊断探测")
+
     @staticmethod
     def _only(args: dict, allowed: set[str]) -> None:
         extra = set(args) - allowed
@@ -254,4 +281,3 @@ def _compact(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_compact(item) for item in value]
     return str(value)
-

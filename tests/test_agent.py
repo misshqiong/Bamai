@@ -53,7 +53,7 @@ def test_ollama_tool_loop_sends_think_false_and_strips_think_tags():
     assert requests[0]["think"] is False
     assert requests[0]["stream"] is False
     assert requests[0]["options"] == {"temperature": 0.7, "num_ctx": 8192}
-    assert len(requests[0]["tools"]) == 8
+    assert len(requests[0]["tools"]) == 9
 
 
 def test_reply_strips_think_content_without_opening_tag():
