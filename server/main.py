@@ -27,16 +27,15 @@ from .agent.ollama_client import (
 from .agent.prompts import build_health_explanation_prompt, build_probe_explanation_prompt
 from .agent.tools import ToolExecutor
 from .collector import Collector, list_processes
-from .db import Database, METRIC_COLUMNS
+from .db import METRIC_COLUMNS, Database
 from .localization import LanguageState
-from .model_pull import ModelPullManager, RECOMMENDED_MODELS
+from .model_pull import RECOMMENDED_MODELS, ModelPullManager
 from .rules import HealthEvaluator, RuleEngine
 from .search.files import find_large_files, mdfind_search
 from .settings import SettingsError, SettingsStore
 from .toolbox.base import ProbeValidationError
 from .toolbox.jobs import ProbeJobManager
 from .toolbox.registry import ProbeRegistry, build_registry
-
 
 logging.basicConfig(
     level=logging.INFO,
@@ -250,9 +249,13 @@ def create_app(
             try:
                 installed = {item["name"] for item in await active_agent().list_models()}
             except (httpx.HTTPError, OllamaError) as exc:
-                raise HTTPException(status_code=503, detail="无法连接 Ollama 以验证模型") from exc
+                raise HTTPException(
+                    status_code=503, detail="无法连接 Ollama 以验证模型"
+                ) from exc
             if requested_model not in installed:
-                raise HTTPException(status_code=422, detail="model 仅可选择已安装的 Ollama 模型")
+                raise HTTPException(
+                    status_code=422, detail="model 仅可选择已安装的 Ollama 模型"
+                )
         try:
             settings = application.state.settings.update(changes)
         except SettingsError as exc:
@@ -313,7 +316,9 @@ def create_app(
         client = active_agent()
         status = await client.status()
         if not status["available"] or not status["model_pulled"]:
-            raise HTTPException(status_code=503, detail=f"Ollama 未就绪。请运行：{INSTALL_GUIDE}")
+            raise HTTPException(
+                status_code=503, detail=f"Ollama 未就绪。请运行：{INSTALL_GUIDE}"
+            )
         language = application.state.language.get()
         prompt = build_probe_explanation_prompt(probe_id, latest.to_dict(), language)
         try:

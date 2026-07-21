@@ -7,7 +7,6 @@ from server.agent.ollama_client import ChatResult
 from server.main import create_app
 from tests.conftest import metric
 
-
 NOW = 1_000_000
 
 

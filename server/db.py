@@ -12,7 +12,6 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from . import config
 
-
 METRIC_COLUMNS = {
     "cpu_percent",
     "load_1",
@@ -197,7 +196,8 @@ class Database:
             rows = conn.execute(
                 sql, (start, bucket, bucket, start, start, end, start, bucket)
             ).fetchall()
-            # 48 小时以前的原始数据已归档到小时表；只补没有原始点的历史小时。
+            # 48 小时以前的原始数据已归档到小时表；
+            # 只补没有原始点的历史小时。
             hourly = conn.execute(
                 f"SELECT hour_ts, {metric}_avg, {metric}_max FROM metrics_hourly "
                 "WHERE hour_ts BETWEEN ? AND ? ORDER BY hour_ts",

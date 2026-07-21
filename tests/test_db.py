@@ -15,7 +15,15 @@ def test_schema_and_round_trip(db):
             "SELECT name FROM sqlite_master WHERE type='table'"
         )}
         mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
-    assert {"metrics", "metrics_hourly", "process_snapshots", "process_net", "disk_usage", "events"} <= tables
+    expected = {
+        "metrics",
+        "metrics_hourly",
+        "process_snapshots",
+        "process_net",
+        "disk_usage",
+        "events",
+    }
+    assert expected <= tables
     assert mode.lower() == "wal"
 
 
@@ -58,7 +66,9 @@ def test_cleanup_aggregates_and_applies_retention(db):
 
     with db.connect(read_only=True) as conn:
         assert conn.execute("SELECT COUNT(*) FROM metrics").fetchone()[0] == 1
-        hourly = conn.execute("SELECT cpu_percent_avg,cpu_percent_max FROM metrics_hourly").fetchone()
+        hourly = conn.execute(
+            "SELECT cpu_percent_avg,cpu_percent_max FROM metrics_hourly"
+        ).fetchone()
         assert tuple(hourly) == (30.0, 40.0)
         assert conn.execute("SELECT COUNT(*) FROM process_snapshots").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM process_net").fetchone()[0] == 0

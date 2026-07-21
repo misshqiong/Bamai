@@ -16,7 +16,9 @@ class ProbeJobManager:
     def __init__(self, registry: ProbeRegistry, *, max_workers: int = 3, keep: int = 50) -> None:
         self.registry = registry
         self.keep = keep
-        self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="bamai-probe")
+        self._executor = ThreadPoolExecutor(
+            max_workers=max_workers, thread_name_prefix="bamai-probe"
+        )
         self._lock = threading.Lock()
         self._jobs: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._latest: dict[str, ProbeResult] = {}

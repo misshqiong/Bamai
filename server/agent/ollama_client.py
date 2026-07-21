@@ -16,8 +16,7 @@ from .. import config
 from ..db import Database
 from ..settings import SettingsStore
 from .prompts import build_event_diagnosis_prompt, build_system_prompt
-from .tools import TOOL_DEFINITIONS, ToolError, ToolExecutor
-
+from .tools import TOOL_DEFINITIONS, ToolExecutor
 
 logger = logging.getLogger(__name__)
 INSTALL_GUIDE = "brew install ollama && ollama pull qwen3:4b"
@@ -109,10 +108,13 @@ class OllamaClient:
             tool_calls = message.get("tool_calls") or []
             if not tool_calls:
                 return ChatResult(self._reply_content(message), trace)
-            conversation.append({
-                "role": "assistant", "content": message.get("content") or "",
-                "tool_calls": tool_calls,
-            })
+            conversation.append(
+                {
+                    "role": "assistant",
+                    "content": message.get("content") or "",
+                    "tool_calls": tool_calls,
+                }
+            )
             for call in tool_calls:
                 function = call.get("function") or {}
                 name = function.get("name") or ""
@@ -128,17 +130,25 @@ class OllamaClient:
                 trace.append({"tool": name, "args": arguments, "summary": summary})
                 conversation.append({"role": "tool", "tool_name": name, "content": content})
 
-        conversation.append({
-            "role": "system",
-            "content": f"工具调用已达到 {rounds} 轮上限。请停止调用工具，基于已有结果直接回答；数据不足时明确说明。",
-        })
+        conversation.append(
+            {
+                "role": "system",
+                "content": (
+                    f"工具调用已达到 {rounds} 轮上限。请停止调用工具，"
+                    "基于已有结果直接回答；数据不足时明确说明。"
+                ),
+            }
+        )
         final_message = await self._chat_request(conversation, tools=None)
         return ChatResult(self._reply_content(final_message), trace)
 
     async def _chat_request(self, messages: list[dict], tools: list[dict] | None) -> dict:
         settings = self.current_settings()
         payload: dict[str, Any] = {
-            "model": settings["model"], "messages": messages, "stream": False, "think": False,
+            "model": settings["model"],
+            "messages": messages,
+            "stream": False,
+            "think": False,
             "options": {
                 "temperature": settings["temperature"],
                 "num_ctx": settings["num_ctx"],
@@ -148,7 +158,9 @@ class OllamaClient:
             payload["tools"] = tools
         try:
             response = await self._request(
-                "POST", "/api/chat", json=payload,
+                "POST",
+                "/api/chat",
+                json=payload,
                 timeout=config.OLLAMA_CHAT_TIMEOUT_SECONDS,
             )
         except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout) as exc:
@@ -178,7 +190,11 @@ class OllamaClient:
         for message in messages:
             role = message.get("role")
             content = message.get("content")
-            if role not in {"user", "assistant"} or not isinstance(content, str) or not content.strip():
+            if (
+                role not in {"user", "assistant"}
+                or not isinstance(content, str)
+                or not content.strip()
+            ):
                 raise ValueError("聊天消息必须包含有效的 user/assistant role 和 content")
             cleaned.append({"role": role, "content": content.strip()})
         if not cleaned:
@@ -217,7 +233,9 @@ class EventDiagnoser:
     """用独立线程运行异步 Agent，避免规则评估阻塞采集线程。"""
 
     def __init__(
-        self, db: Database, client: OllamaClient,
+        self,
+        db: Database,
+        client: OllamaClient,
         language_provider: Callable[[], str] = lambda: "zh",
     ) -> None:
         self.db = db
@@ -237,9 +255,15 @@ class EventDiagnoser:
             if not status["available"] or not status["model_pulled"]:
                 return
             language = event.get("language") or self.language_provider()
-            result = await self.client.chat([{
-                "role": "user", "content": build_event_diagnosis_prompt(event, language)
-            }], language=language)
+            result = await self.client.chat(
+                [
+                    {
+                        "role": "user",
+                        "content": build_event_diagnosis_prompt(event, language),
+                    }
+                ],
+                language=language,
+            )
             self.db.update_event_ai_analysis(event_id, result.reply)
         except Exception as exc:  # AI 诊断绝不能影响事件和采集线程
             logger.warning("事件 %s 的 AI 诊断失败: %s", event_id, exc)

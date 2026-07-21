@@ -5,7 +5,6 @@ import re
 from ..base import ProbeParam, ProbeResult, ProbeSpec, ProbeValidationError
 from .common import output_of, run_command
 
-
 HOST_PATTERN = re.compile(r"^[A-Za-z0-9.:-]{1,253}$")
 
 

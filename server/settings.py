@@ -10,7 +10,6 @@ from typing import Any, Mapping
 
 from . import config
 
-
 DEFAULT_SETTINGS: dict[str, Any] = {
     "model": config.OLLAMA_MODEL,
     "temperature": config.OLLAMA_TEMPERATURE,
@@ -98,11 +97,19 @@ class SettingsStore:
                     raise SettingsError("model 必须是有效的模型名称")
                 result[key] = value.strip()
             elif key == "temperature":
-                if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 1:
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not 0 <= value <= 1
+                ):
                     raise SettingsError("temperature 必须在 0 到 1 之间")
                 result[key] = float(value)
             elif key == "num_ctx":
-                if isinstance(value, bool) or not isinstance(value, int) or not 512 <= value <= 131_072:
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, int)
+                    or not 512 <= value <= 131_072
+                ):
                     raise SettingsError("num_ctx 必须是 512 到 131072 之间的整数")
                 result[key] = value
             elif key == "language":

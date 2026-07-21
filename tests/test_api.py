@@ -36,7 +36,10 @@ def test_overview_metrics_events_and_websocket(db, monkeypatch):
         assert overview.json()["metric"]["cpu_percent"] == 33
         assert overview.json()["unresolved_events"] == 1
         assert overview.json()["ollama"]["model_pulled"] is True
-        history = client.get("/api/metrics", params={"metric": "cpu_percent", "start": 0, "end": 200})
+        history = client.get(
+            "/api/metrics",
+            params={"metric": "cpu_percent", "start": 0, "end": 200},
+        )
         assert history.status_code == 200
         assert history.json()["points"][0]["avg"] == 33
         assert client.get("/api/events").json()["items"][0]["kind"] == "example"
@@ -46,10 +49,23 @@ def test_overview_metrics_events_and_websocket(db, monkeypatch):
 
 
 def test_api_validation_and_search(db, monkeypatch):
-    monkeypatch.setattr("server.main.mdfind_search", lambda q, kind, limit: [{"name": q, "path": "/tmp/x", "size": 1}])
-    monkeypatch.setattr("server.main.find_large_files", lambda path, min_mb, limit: {"items": [], "truncated": False, "scanned_path": path})
+    monkeypatch.setattr(
+        "server.main.mdfind_search",
+        lambda q, kind, limit: [{"name": q, "path": "/tmp/x", "size": 1}],
+    )
+    monkeypatch.setattr(
+        "server.main.find_large_files",
+        lambda path, min_mb, limit: {
+            "items": [],
+            "truncated": False,
+            "scanned_path": path,
+        },
+    )
     with TestClient(create_app(db, collector_enabled=False, agent_client=FakeAgent())) as client:
-        assert client.get("/api/metrics", params={"metric": "invalid", "start": 0, "end": 1}).status_code == 422
+        response = client.get(
+            "/api/metrics", params={"metric": "invalid", "start": 0, "end": 1}
+        )
+        assert response.status_code == 422
         assert client.get("/api/processes", params={"sort": "network"}).status_code == 422
         found = client.get("/api/search/files", params={"q": "报告", "kind": "name"})
         assert found.status_code == 200

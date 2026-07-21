@@ -11,7 +11,6 @@ import httpx
 
 from . import config
 
-
 logger = logging.getLogger(__name__)
 
 RECOMMENDED_MODELS = [

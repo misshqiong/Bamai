@@ -17,7 +17,6 @@ from . import config
 from .db import Database
 from .rules import RuleEngine
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -84,7 +83,9 @@ class Collector:
     def _run(self) -> None:
         # 首轮即采集慢速项目，之后保持每 60 秒一次。
         tick = config.SLOW_SAMPLE_TICKS - 1
-        logger.info("监控采集线程已启动，采样间隔 %s 秒", config.SAMPLE_INTERVAL_SECONDS)
+        logger.info(
+            "监控采集线程已启动，采样间隔 %s 秒", config.SAMPLE_INTERVAL_SECONDS
+        )
         while not self._stop_event.is_set():
             started = time.monotonic()
             now = int(time.time())
@@ -210,7 +211,9 @@ class Collector:
             check=False,
         )
         if completed.returncode != 0:
-            raise RuntimeError(completed.stderr.strip() or f"nettop 退出码 {completed.returncode}")
+            raise RuntimeError(
+                completed.stderr.strip() or f"nettop 退出码 {completed.returncode}"
+            )
         now_mono = time.monotonic()
         current = parse_nettop_output(completed.stdout)
         rates = []

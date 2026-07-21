@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
-
 MAX_RAW_OUTPUT = 8 * 1024
 
 

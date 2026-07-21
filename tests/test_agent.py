@@ -33,9 +33,15 @@ def test_ollama_tool_loop_sends_think_false_and_strips_think_tags():
                 }}],
             }})
         assert payload["messages"][-1]["role"] == "tool"
-        return httpx.Response(200, json={"message": {
-            "role": "assistant", "content": "<think>内部推理不可见</think>当前 CPU 为 37%。",
-        }})
+        return httpx.Response(
+            200,
+            json={
+                "message": {
+                    "role": "assistant",
+                    "content": "<think>内部推理不可见</think>当前 CPU 为 37%。",
+                }
+            },
+        )
 
     async def scenario():
         tools = FakeTools()
@@ -58,7 +64,9 @@ def test_ollama_tool_loop_sends_think_false_and_strips_think_tags():
 
 def test_reply_strips_think_content_without_opening_tag():
     # qwen3 经 Ollama 输出时可能缺失开头 <think>，只留结尾 </think>
-    message = {"content": "先分析一下内存数据……\n</think>\n\n内存占用前三名如下。"}
+    message = {
+        "content": "先分析一下内存数据……\n</think>\n\n内存占用前三名如下。"
+    }
     assert OllamaClient._reply_content(message) == "内存占用前三名如下。"
 
 
@@ -134,7 +142,9 @@ def test_event_diagnosis_updates_database_without_real_ollama(db):
 
         async def chat(self, messages, language="zh"):
             assert "cpu_high" in messages[0]["content"]
-            return ChatResult("CPU 高负载可能由编译任务造成，建议先观察进程列表。", [])
+            return ChatResult(
+                "CPU 高负载可能由编译任务造成，建议先观察进程列表。", []
+            )
 
     diagnoser = EventDiagnoser(db, FakeAgent())
     try:

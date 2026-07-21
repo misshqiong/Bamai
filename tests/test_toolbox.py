@@ -4,16 +4,24 @@ import json
 import subprocess
 import time
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 from server.agent.tools import ToolError, ToolExecutor
 from server.toolbox.base import ProbeParam, ProbeResult, ProbeSpec, ProbeValidationError
 from server.toolbox.jobs import ProbeJobManager
-from server.toolbox.probes import battery, capture, dns, memory_check, netquality, ping, port, traceroute, wifi
+from server.toolbox.probes import (
+    battery,
+    capture,
+    dns,
+    memory_check,
+    netquality,
+    ping,
+    port,
+    traceroute,
+    wifi,
+)
 from server.toolbox.registry import ProbeRegistry, build_registry
-
 
 PING_SAMPLE = """4 packets transmitted, 4 packets received, 25.0% packet loss
 round-trip min/avg/max/stddev = 10.100/12.200/14.300/1.000 ms
@@ -65,7 +73,8 @@ def test_probe_framework_validates_and_runs_mock_runner():
         params=(ProbeParam("count", "int", "mock.count", default=2, min=1, max=3),),
         runner=lambda params: calls.append(params) or ProbeResult({"count": params["count"]}),
     )
-    registry = ProbeRegistry(); registry.register(spec)
+    registry = ProbeRegistry()
+    registry.register(spec)
     assert registry.run("mock", {}).summary == {"count": 2}
     assert calls == [{"count": 2}]
     assert registry.all()[0].to_dict()["params"][0]["max"] == 3
@@ -136,20 +145,31 @@ def test_probe_commands_are_argument_lists(monkeypatch, tmp_path, db):
     def fake_run(command, timeout):
         assert isinstance(command, list)
         calls.append(command)
-        if command[0] == "ping": return result(PING_SAMPLE)
-        if command[0] == "traceroute": return result(TRACEROUTE_SAMPLE)
-        if command[0] == "dig": return result(DIG_SAMPLE)
-        if command[0] == "nc": return result(returncode=0)
-        if command[:2] == ["networkQuality", "-v"]: return result(NETWORK_QUALITY_SAMPLE)
-        if command == ["memory_pressure"]: return result(MEMORY_PRESSURE_SAMPLE)
-        if command == ["vm_stat"]: return result(VM_STAT_SAMPLE)
-        if command == ["pmset", "-g", "batt"]: return result(PMSET_SAMPLE)
-        if command == ["system_profiler", "SPAirPortDataType", "-json"]: return result(WIFI_JSON_SAMPLE)
-        if command == ["system_profiler", "SPPowerDataType", "-json"]: return result(POWER_JSON_SAMPLE)
+        if command[0] == "ping":
+            return result(PING_SAMPLE)
+        if command[0] == "traceroute":
+            return result(TRACEROUTE_SAMPLE)
+        if command[0] == "dig":
+            return result(DIG_SAMPLE)
+        if command[0] == "nc":
+            return result(returncode=0)
+        if command[:2] == ["networkQuality", "-v"]:
+            return result(NETWORK_QUALITY_SAMPLE)
+        if command == ["memory_pressure"]:
+            return result(MEMORY_PRESSURE_SAMPLE)
+        if command == ["vm_stat"]:
+            return result(VM_STAT_SAMPLE)
+        if command == ["pmset", "-g", "batt"]:
+            return result(PMSET_SAMPLE)
+        if command == ["system_profiler", "SPAirPortDataType", "-json"]:
+            return result(WIFI_JSON_SAMPLE)
+        if command == ["system_profiler", "SPPowerDataType", "-json"]:
+            return result(POWER_JSON_SAMPLE)
         if command[0] == "tcpdump" and "-w" in command:
             Path(command[command.index("-w") + 1]).write_bytes(b"pcap")
             return result(stderr="captured 3 packets")
-        if command[0] == "tcpdump": return result(TCPDUMP_SAMPLE)
+        if command[0] == "tcpdump":
+            return result(TCPDUMP_SAMPLE)
         raise AssertionError(command)
 
     for module in (ping, traceroute, dns, port, netquality, memory_check, wifi, battery, capture):
@@ -166,7 +186,9 @@ def test_probe_commands_are_argument_lists(monkeypatch, tmp_path, db):
         "interface": "en0", "filter": "tcp port 443", "duration": 1, "max_packets": 10,
     })
     assert ["ping", "-c", "4", "example.com"] in calls
-    capture_command = next(command for command in calls if command[0] == "tcpdump" and "-w" in command)
+    capture_command = next(
+        command for command in calls if command[0] == "tcpdump" and "-w" in command
+    )
     assert capture_command[capture_command.index("-s") + 1] == "96"
     assert "-nn" in capture_command
     source = "\n".join(
@@ -200,7 +222,8 @@ def test_capture_authorization_detection_is_mockable(monkeypatch, tmp_path):
     spec = capture.get_spec(tmp_path)
     assert spec.needs_authorization is True
     assert spec.authorized() is False
-    registry = ProbeRegistry(); registry.register(spec)
+    registry = ProbeRegistry()
+    registry.register(spec)
     jobs = ProbeJobManager(registry)
     try:
         started = jobs.start("capture", {})

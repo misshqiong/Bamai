@@ -1,138 +1,150 @@
-# Bamai（把脉）
+# Bamai
 
-Bamai（把脉）是面向 macOS Apple Silicon 的本地系统监控助手。*Take your Mac's pulse, locally.* / 给你的 Mac 把把脉。它实时采集 CPU、内存、磁盘、网络和进程状态，并可通过本机 Ollama + `qwen3:4b` 回答系统状态问题、查询历史数据和诊断异常。所有监控数据和 AI 请求都留在本机。
+**A local-first Mac health monitor and diagnostic assistant that helps you understand what your Mac is doing.**
 
-## 功能
+[中文说明](README.zh-CN.md)
 
-- 3 秒实时 CPU、内存、磁盘 I/O 和网络曲线
-- 1 小时至 7 天历史趋势和自动降采样
-- CPU、内存、网络 Top 进程与异常事件
-- 绿/黄/红三色健康横幅，以及按需触发的 AI 小白解读
-- 中文 / English 即时切换，语言选择保存在浏览器本地
-- Spotlight 文件名/内容搜索和限时大文件扫描
-- 基于真实工具数据的本地 AI 问答
-- CPU、内存、磁盘和网络异常的后台 AI 诊断
-- Ollama 不可用时自动降级，监控和搜索功能继续工作
-- 运行时切换本地模型、语言、温度和上下文长度，无需重启
-- 插件化本地工具箱：网络、DNS、端口、Wi-Fi、电池、内存与受控抓包诊断
+## Private by design
 
-## 环境要求
+Bamai is local-only by default:
 
-- macOS（Apple Silicon）
-- Python 3.12+
-- 可选：Ollama 和 `qwen3:4b` 模型
+- The web server listens only on `127.0.0.1`; it is not exposed to your network.
+- Metrics, alerts, settings, and packet captures stay under `~/.bamai/` on your Mac.
+- AI requests go only to your local Ollama server. Bamai has no cloud backend, telemetry, or account system.
+- Monitoring and diagnostics continue to work when Ollama is not installed.
 
-如需 AI 功能，先执行：
+Packet captures can still contain local addresses, ports, and protocol metadata. Bamai limits capture duration and packet size, but you remain responsible for the resulting local files.
+
+## Features
+
+- Live CPU, per-core CPU, memory, disk I/O, network, and process monitoring.
+- SQLite-backed history with charts from one hour to seven days.
+- Rule-based alerts and a green/yellow/red health banner that do not require AI.
+- Optional local AI chat and plain-language explanations powered by Ollama.
+- Runtime model, language, temperature, and context-length switching.
+- English and Chinese UI with instant language switching.
+- Spotlight file search and bounded large-file scanning.
+- Plugin-style diagnostic toolbox with nine built-in probes.
+- Bounded, header-only packet capture with protocol and top-session summaries.
+- A bilingual `bamai` CLI for daemon, log, model, and autostart management.
+
+## Requirements
+
+- macOS on Apple Silicon.
+- Python 3.12 or later.
+- Optional: [Ollama](https://ollama.com/) for local AI features.
+
+## Quickstart
 
 ```bash
-brew install ollama && ollama pull qwen3:4b
-```
-
-安装后确保 Ollama 服务正在运行。未安装 Ollama 时，聊天栏会显示同一安装命令和“重新检测”按钮。
-
-## 一键启动
-
-```bash
-cd /Users/heqiong/Documents/code/ai_local
+git clone <repository-url> bamai
+cd bamai
 ./bamai start
 ```
 
-CLI 会创建 `.venv`、安装依赖、首次下载本地 ECharts，然后在后台启动：
+Open <http://127.0.0.1:8737>. The first start creates `.venv`, installs dependencies, and downloads the local chart asset. Run `./bamai status`, `./bamai logs`, or `./bamai stop` to manage the service.
 
-```text
-http://127.0.0.1:8737
-```
-
-服务只监听 `127.0.0.1`。SQLite 数据库默认位于 `~/.bamai/data.db`；可用 `BAMAI_DATA_DIR` / `BAMAI_DB_PATH` 覆盖数据位置，用 `BAMAI_OLLAMA_URL` 覆盖 Ollama 地址。首次启动时若只有 `~/.macpilot`，会把内容复制到 `~/.bamai` 并保留旧目录作为备份。
-
-常用 CLI 命令：
+AI is optional. To enable it:
 
 ```bash
-./bamai status
-./bamai logs
-./bamai restart
-./bamai stop
-./bamai start --foreground
-./bamai start --with-ai
-./bamai model list
-./bamai model use qwen3:8b
-./bamai model pull qwen3:8b
-./bamai autostart on
+brew install ollama
+ollama serve
+ollama pull qwen3:4b
+./bamai restart --with-ai
 ```
 
-`run.sh` 保留为兼容入口，等同于 `./bamai start --foreground`。PID、服务日志和运行时设置分别位于 `~/.bamai/bamai.pid`、`~/.bamai/bamai.log` 和 `~/.bamai/config.json`。
+The legacy `./run.sh` entry point remains available and starts Bamai in the foreground.
 
-## 使用 AI 助手
+## Recommended models
 
-聊天栏可以处理例如：
+| Model | Approximate download | Recommended system memory | Best for |
+| --- | ---: | ---: | --- |
+| `qwen3:4b` | 3 GB | 8 GB | Fast responses and the default experience |
+| `qwen3:8b` | 6 GB | 16 GB | More detailed explanations |
+| `qwen3:14b` | 10 GB | 24 GB | Higher-quality reasoning on capable Macs |
 
-- “现在 CPU 和内存怎么样？”
-- “过去 6 小时内存峰值是多少？”
-- “哪个进程最占网络？”
-- “今天有哪些异常事件？”
-- “帮我找 Downloads 中超过 500MB 的文件。”
+Install or switch models from Settings, with `./bamai model pull <name>`, or with `./bamai model use <name>`.
 
-Agent 最多进行 6 轮工具调用，所有回答必须依据本机工具返回的数据。聊天响应下方可展开查看查询过程。删除文件、杀进程等危险操作只会给出建议，不会代替用户执行。
+## Toolbox
 
-## API
+The Toolbox provides read-only, structured diagnostics for:
 
-- `GET /api/overview`：当前总览及 Ollama 状态
-- `GET /api/metrics`：历史指标
-- `GET /api/processes`、`GET /api/processes/net`：进程状态
-- `GET /api/events`：异常事件及 AI 诊断
-- `GET /api/health`：不调用 AI 的当前健康规则结果
-- `POST /api/health/explain`：按需生成当前健康的小白 AI 解读
-- `GET /api/search/files`、`GET /api/search/large-files`：文件搜索
-- `GET /api/ollama/status`：Ollama 与模型状态
-- `GET/POST /api/settings`：读取或即时更新运行时设置
-- `GET /api/ollama/models`：已安装与推荐模型
-- `POST /api/ollama/pull`、`GET /api/ollama/pull/status`：后台下载模型与查询进度
-- `GET /api/toolbox`、`POST /api/toolbox/{id}/run`：列出并运行诊断工具
-- `GET /api/toolbox/jobs/{job_id}`、`POST /api/toolbox/{id}/explain`：轮询结果与 AI 解读
+- Ping, traceroute, DNS, port connectivity, and macOS `networkQuality`.
+- Memory pressure and processes with sustained RSS growth.
+- Wi-Fi signal/channel details and battery health.
+- Bounded packet capture with protocol distribution and top five-tuple sessions.
 
-## 工具箱与抓包安全边界
+Every probe validates its parameters and invokes system commands as argument lists without a shell. Jobs run in the background with a maximum concurrency of three.
 
-所有探测命令都以参数列表直接启动，不经过 shell。抓包默认只保留 96 字节包头、不做域名反解，最长 60 秒、最多 2000 包；pcap 只写入 `~/.bamai/captures/`，不会进入 SQLite 或上传到网络。即使只保存包头，pcap 仍可能包含本机地址、端口和少量协议元数据，请仅在需要时运行并自行管理文件。
+### Packet-capture authorization
 
-首次使用抓包时需按页面引导执行：
+Packet capture is disabled until the current user can read `/dev/bpf0`. Enable it with:
 
 ```bash
 sudo ./scripts/enable-capture.sh
 ```
 
-该脚本采用 Wireshark 同类的 `access_bpf` 用户组方案，不会让 Bamai 以 root 运行。完整撤销授权：
+The script follows Wireshark's `access_bpf` group approach. It does not run the Bamai server as root. Log out and back in after enabling access. To remove the LaunchDaemon, user/group changes created by Bamai, and BPF permissions:
 
 ```bash
 sudo ./scripts/disable-capture.sh
 ```
-- `POST /api/chat`：本地 Agent 对话
-- `WS /ws/realtime`：3 秒实时指标
 
-## 测试
+Captures use a 96-byte snap length, disable name resolution, stop after at most 60 seconds or 2,000 packets, and are stored only in `~/.bamai/captures/`. They are never inserted into SQLite or sent to a cloud service.
+
+## Architecture
+
+```text
+Browser UI (HTML/CSS/JavaScript)
+          │ REST + WebSocket on 127.0.0.1:8737
+          ▼
+FastAPI server ───── SQLite (~/.bamai/data.db)
+     │    │
+     │    ├── Monitor + rule engine + background jobs
+     │    └── Toolbox registry ── macOS built-in commands
+     │
+     └── Optional Ollama client ── local model on 127.0.0.1:11434
+```
+
+The collector samples system metrics, the rule engine creates structured events, FastAPI exposes REST/WebSocket endpoints, and the static dashboard renders local data. Ollama is isolated behind an optional client so monitoring remains available when AI is offline.
+
+## Screenshots
+
+Placeholders for the first public release:
+
+- [Dashboard](docs/screenshots/dashboard.png)
+- [Toolbox](docs/screenshots/toolbox.png)
+- [Settings and local AI](docs/screenshots/settings-chat.png)
+
+See [docs/screenshots/](docs/screenshots/) for contribution notes.
+
+## Development and testing
 
 ```bash
-cd /Users/heqiong/Documents/code/ai_local
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt pytest ruff
+.venv/bin/ruff check .
 .venv/bin/python -m pytest -q
 ```
 
-Agent、聊天 API 和事件诊断测试全部使用 mock Ollama 响应，不要求安装或运行真实 Ollama。
-
-## 常见问题
-
-### 聊天栏显示 Ollama 未就绪
-
-执行：
+Run the development server in the foreground:
 
 ```bash
-brew install ollama && ollama pull qwen3:4b
+./bamai start --foreground
 ```
 
-确认 Ollama 已启动后点击聊天栏中的“重新检测”。
+Ollama is not required for tests; AI responses are mocked. See [CONTRIBUTING.md](CONTRIBUTING.md) for probe development and code-style guidance.
 
-### nettop 采集失败
+## Data and configuration
 
-部分 macOS 环境可能限制 `nettop`。Bamai 会记录 warning 并跳过本次每进程网络采样，其他监控项不会中断。
+- Database: `~/.bamai/data.db`
+- Runtime settings: `~/.bamai/config.json`
+- PID and logs: `~/.bamai/bamai.pid`, `~/.bamai/bamai.log`
+- Packet captures: `~/.bamai/captures/`
+- Overrides: `BAMAI_DATA_DIR`, `BAMAI_DB_PATH`, `BAMAI_CONFIG_PATH`, `BAMAI_CAPTURES_DIR`, and `BAMAI_OLLAMA_URL`
 
-### 数据与隐私
+On first start, Bamai safely copies a legacy `~/.macpilot` directory to `~/.bamai` while retaining the original as a backup.
 
-监控数据只写入本机 SQLite。AI 请求只发送到默认的本机地址 `http://localhost:11434`，不使用云端模型或 embedding 服务。
+## License
+
+[MIT](LICENSE) © Bamai contributors.

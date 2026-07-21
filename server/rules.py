@@ -12,7 +12,6 @@ from .db import Database
 from .localization import normalize_language, render_event_text
 from .notify import send_notification
 
-
 logger = logging.getLogger(__name__)
 
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 import threading
 from typing import Any, Mapping
 
-
 EVENT_TEXTS = {
     "zh": {
         "cpu_high": (
@@ -14,7 +13,8 @@ EVENT_TEXTS = {
         ),
         "mem_pressure": (
             "内存占用较高",
-            "内存使用率 {percent}%，10 分钟内系统借用磁盘空间增加 {growth_gb} GB。",
+            "内存使用率 {percent}%，10 分钟内系统借用磁盘空间增加 "
+            "{growth_gb} GB。",
         ),
         "disk_full": (
             "磁盘空间不足",
@@ -40,7 +40,8 @@ EVENT_TEXTS = {
         ),
         "net_spike": (
             "Network activity increased sharply",
-            "Traffic averaged {recent_mbps} MB/s over 2 minutes, versus about {baseline_mbps} MB/s normally.",
+            "Traffic averaged {recent_mbps} MB/s over 2 minutes, versus about "
+            "{baseline_mbps} MB/s normally.",
         ),
     },
 }
@@ -86,4 +87,3 @@ def _display(value: Any) -> Any:
     if isinstance(value, float):
         return round(value, 1)
     return value
-

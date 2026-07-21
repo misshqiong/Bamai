@@ -38,7 +38,17 @@ def build_registry(
     db: Database,
     captures_dir: str | Path = config.CAPTURES_DIR,
 ) -> ProbeRegistry:
-    from .probes import battery, capture, dns, memory_check, netquality, ping, port, traceroute, wifi
+    from .probes import (
+        battery,
+        capture,
+        dns,
+        memory_check,
+        netquality,
+        ping,
+        port,
+        traceroute,
+        wifi,
+    )
 
     registry = ProbeRegistry()
     for spec in (

@@ -10,7 +10,6 @@ from typing import Any
 
 from .. import config
 
-
 PACKAGE_SUFFIXES = (".app", ".framework")
 
 
@@ -109,7 +108,8 @@ def _resolve_scan_path(value: str) -> Path:
     value = value.strip() or "~"
     home = Path.home().resolve()
     raw = Path(value)
-    # 只有原始输入就是绝对路径时，才视为用户显式允许扫描用户目录以外。
+    # 只有原始输入就是绝对路径时，
+    # 才视为用户显式允许扫描用户目录以外。
     if raw.is_absolute():
         return raw.resolve()
     expanded = raw.expanduser()

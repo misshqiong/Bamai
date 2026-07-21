@@ -4,7 +4,6 @@ import json
 import re
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -36,8 +35,16 @@ def test_every_html_data_i18n_key_exists():
 def test_health_and_event_templates_exist_in_both_languages():
     dictionaries = load_dictionaries()
     required = {
-        *(f"health.{kind}.{field}" for kind in ("cpu", "memory", "disk", "network", "swap") for field in ("headline", "advice")),
-        *(f"events.{kind}.{field}" for kind in ("cpu_high", "mem_pressure", "disk_full", "net_spike") for field in ("title", "detail")),
+        *(
+            f"health.{kind}.{field}"
+            for kind in ("cpu", "memory", "disk", "network", "swap")
+            for field in ("headline", "advice")
+        ),
+        *(
+            f"events.{kind}.{field}"
+            for kind in ("cpu_high", "mem_pressure", "disk_full", "net_spike")
+            for field in ("title", "detail")
+        ),
     }
     for language in ("zh", "en"):
         assert required <= set(dictionaries[language])

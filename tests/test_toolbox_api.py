@@ -39,7 +39,8 @@ def make_toolbox(authorized=True):
 def test_toolbox_api_run_poll_explain_and_capture_download(db, tmp_path):
     registry, jobs = make_toolbox()
     capture_file = tmp_path / "captures" / "123.pcap"
-    capture_file.parent.mkdir(); capture_file.write_bytes(b"pcap-data")
+    capture_file.parent.mkdir()
+    capture_file.write_bytes(b"pcap-data")
     with TestClient(create_app(
         db, collector_enabled=False, agent_client=ExplainAgent(),
         toolbox_registry=registry, toolbox_jobs=jobs, captures_dir=capture_file.parent,
@@ -51,7 +52,8 @@ def test_toolbox_api_run_poll_explain_and_capture_download(db, tmp_path):
         assert started.status_code == 202
         for _ in range(100):
             job = client.get(f"/api/toolbox/jobs/{started.json()['job_id']}").json()
-            if job["status"] != "running": break
+            if job["status"] != "running":
+                break
             time.sleep(0.01)
         assert job["status"] == "done" and job["result"]["summary"] == {"ok": True}
         explanation = client.post("/api/toolbox/mock/explain")

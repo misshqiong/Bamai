@@ -14,7 +14,9 @@ def _number(pattern: str, output: str) -> float | None:
 def parse_network_quality_output(output: str) -> dict:
     return {
         "upload_mbps": _number(r"(?:Uplink capacity|Upload capacity):\s*([\d.]+)\s*Mbps", output),
-        "download_mbps": _number(r"(?:Downlink capacity|Download capacity):\s*([\d.]+)\s*Mbps", output),
+        "download_mbps": _number(
+            r"(?:Downlink capacity|Download capacity):\s*([\d.]+)\s*Mbps", output
+        ),
         "responsiveness_rpm": _number(r"Responsiveness:.*?\(([\d.]+)\s*RPM\)", output),
     }
 

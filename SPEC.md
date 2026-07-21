@@ -369,7 +369,7 @@ pytest 单测（不依赖 Ollama、不依赖真实系统状态）：
 - `pyproject.toml`：仅 ruff 配置（line-length 100，规则 E/F/I/W）；全库 ruff 通过。
 - `.github/workflows/ci.yml`：macos-latest，Python 3.12，`pip install -r requirements.txt pytest ruff`
   → `ruff check` → `pytest`。
-- 清理：文档与代码中不得出现个人绝对路径（`/Users/heqiong/...`）与个人信息；
+- 清理：文档与代码中不得出现个人绝对路径（`/Users/<username>/...`）与个人信息；
   `.gitignore` 补充 `~` 类数据外的 `captures/`、`.ruff_cache/`。
 - 测试补充：i18n 字典键完整性（zh/en 键集合一致）、/api/health、/api/settings、
   toolbox 框架（mock runner）、各 probe 的输出解析（固定样例文本）、CLI 语法 `bash -n`。

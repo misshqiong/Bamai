@@ -20,8 +20,10 @@ def _function(name: str, description: str, properties: dict, required: list[str]
             "name": name,
             "description": description,
             "parameters": {
-                "type": "object", "properties": properties,
-                "required": required, "additionalProperties": False,
+                "type": "object",
+                "properties": properties,
+                "required": required,
+                "additionalProperties": False,
             },
         },
     }
@@ -37,10 +39,16 @@ TOOL_DEFINITIONS = [
         "metric": {"type": "string", "enum": sorted(METRIC_COLUMNS)},
         "start_ts": {"type": "integer"}, "end_ts": {"type": "integer"},
     }, ["metric", "start_ts", "end_ts"]),
-    _function("get_process_history", "聚合一段时间内的进程快照，找出资源消耗者。", {
-        "start_ts": {"type": "integer"}, "end_ts": {"type": "integer"},
-        "name": {"type": "string", "description": "可选的进程名模糊过滤"},
-    }, ["start_ts", "end_ts"]),
+    _function(
+        "get_process_history",
+        "聚合一段时间内的进程快照，找出资源消耗者。",
+        {
+            "start_ts": {"type": "integer"},
+            "end_ts": {"type": "integer"},
+            "name": {"type": "string", "description": "可选的进程名模糊过滤"},
+        },
+        ["start_ts", "end_ts"],
+    ),
     _function("get_events", "查询最近的系统告警事件。", {
         "limit": {"type": "integer", "minimum": 1, "maximum": 50},
         "since_ts": {"type": "integer", "description": "可选的起始 Unix 秒"},
@@ -137,7 +145,9 @@ class ToolExecutor:
             "net_up_bps": metric["net_up_bps"], "net_down_bps": metric["net_down_bps"],
             "disks": self.db.latest_disk_usage(),
         }
-        return ToolResult(_compact(data), f"查询了 {self._clock(metric['ts'])} 的当前系统状态")
+        return ToolResult(
+            _compact(data), f"查询了 {self._clock(metric['ts'])} 的当前系统状态"
+        )
 
     def _top_processes(self, args: dict) -> ToolResult:
         self._only(args, {"sort_by", "limit"})
@@ -147,7 +157,8 @@ class ToolExecutor:
             self.db.latest_process_net()[:limit]
             if sort_by == "network" else self.process_provider(sort_by, limit)
         )
-        return ToolResult(_compact(rows), f"查询了按{ {'cpu': 'CPU', 'memory': '内存', 'network': '网络'}[sort_by] }排序的前 {len(rows)} 个进程")
+        label = {"cpu": "CPU", "memory": "内存", "network": "网络"}[sort_by]
+        return ToolResult(_compact(rows), f"查询了按{label}排序的前 {len(rows)} 个进程")
 
     def _query_metrics(self, args: dict) -> ToolResult:
         self._only(args, {"metric", "start_ts", "end_ts"})
@@ -166,7 +177,10 @@ class ToolExecutor:
             } if values else {"min": None, "max": None, "avg": None, "points": 0}),
             "series": points,
         }
-        return ToolResult(_compact(data), f"查询了 {self._clock(start)}–{self._clock(end)} 的 {metric} 数据")
+        return ToolResult(
+            _compact(data),
+            f"查询了 {self._clock(start)}–{self._clock(end)} 的 {metric} 数据",
+        )
 
     def _process_history(self, args: dict) -> ToolResult:
         self._only(args, {"start_ts", "end_ts", "name"})
@@ -176,7 +190,9 @@ class ToolExecutor:
         if name is not None and not isinstance(name, str):
             raise ToolError("name 必须是字符串")
         rows = self.db.process_history(start, end, name, limit=30)
-        return ToolResult(_compact(rows), f"查询了 {self._clock(start)}–{self._clock(end)} 的进程历史")
+        return ToolResult(
+            _compact(rows), f"查询了 {self._clock(start)}–{self._clock(end)} 的进程历史"
+        )
 
     def _events(self, args: dict) -> ToolResult:
         self._only(args, {"limit", "since_ts"})
@@ -199,13 +215,18 @@ class ToolExecutor:
         kind = self._choice(args, "kind", {"name", "content"})
         limit = self._integer(args, "limit", 1, 20)
         rows = self.file_search(query, kind, limit)
-        return ToolResult(_compact(rows), f"按{'文件名' if kind == 'name' else '内容'}搜索了“{query}”，找到 {len(rows)} 项")
+        label = "文件名" if kind == "name" else "内容"
+        return ToolResult(
+            _compact(rows), f"按{label}搜索了“{query}”，找到 {len(rows)} 项"
+        )
 
     def _search_processes(self, args: dict) -> ToolResult:
         self._only(args, {"keyword"})
         keyword = self._text(args, "keyword")
         rows = self.process_search(keyword, 20)
-        return ToolResult(_compact(rows), f"搜索了包含“{keyword}”的运行中进程，找到 {len(rows)} 项")
+        return ToolResult(
+            _compact(rows), f"搜索了包含“{keyword}”的运行中进程，找到 {len(rows)} 项"
+        )
 
     def _run_probe(self, args: dict) -> ToolResult:
         self._only(args, {"probe_id", "params"})
@@ -229,7 +250,12 @@ class ToolExecutor:
             raise ToolError(f"不支持的参数: {', '.join(sorted(extra))}")
 
     @staticmethod
-    def _integer(args: dict, key: str, minimum: int | None = None, maximum: int | None = None) -> int:
+    def _integer(
+        args: dict,
+        key: str,
+        minimum: int | None = None,
+        maximum: int | None = None,
+    ) -> int:
         value = args.get(key)
         if isinstance(value, bool) or not isinstance(value, int):
             raise ToolError(f"{key} 必须是整数")

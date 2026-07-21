@@ -10,7 +10,6 @@ from pathlib import Path
 from ..base import ProbeParam, ProbeResult, ProbeSpec, ProbeValidationError
 from .common import output_of, run_command
 
-
 FILTER_PATTERN = re.compile(r"^[\w\s.():\-&|!]*$")
 INTERFACE_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 

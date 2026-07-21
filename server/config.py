@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import os
 import logging
+import os
 import shutil
 import tempfile
 from pathlib import Path
-
 
 logger = logging.getLogger(__name__)
 
@@ -86,5 +85,7 @@ def migrate_legacy_data_dir(
             shutil.rmtree(staging)
     if not new_path.is_dir():
         raise RuntimeError(f"Bamai 数据迁移后目录不可读: {new_path}")
-    logger.info("已将旧数据目录 %s 迁移到 %s；旧目录保留为备份", old_path, new_path)
+    logger.info(
+        "已将旧数据目录 %s 迁移到 %s；旧目录保留为备份", old_path, new_path
+    )
     return True
