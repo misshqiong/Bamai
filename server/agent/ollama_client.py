@@ -81,6 +81,12 @@ class OllamaClient:
                 result.append({"name": name, "size": int(item.get("size") or 0)})
         return result
 
+    async def delete_model(self, name: str) -> None:
+        await self._request(
+            "DELETE", "/api/delete", json={"model": name},
+            timeout=config.OLLAMA_HEALTH_TIMEOUT_SECONDS,
+        )
+
     async def status(self) -> dict[str, Any]:
         model = self.model
         try:

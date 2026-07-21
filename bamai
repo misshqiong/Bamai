@@ -281,8 +281,19 @@ model_command() {
       curl --fail --silent -H 'Content-Type: application/json' -d "{\"model\":\"$name\"}" "$BASE_URL/api/ollama/pull" >/dev/null 2>&1 || die "无法开始模型下载；请确认 Bamai 与 Ollama 正在运行。" "Could not start the model download; make sure Bamai and Ollama are running."
       say "已开始后台下载 $name；可在设置页查看进度。" "Started downloading $name in the background; view progress in Settings."
       ;;
+    rm)
+      [[ -n "$name" ]] || die "请指定模型名。" "Please provide a model name."
+      valid_model_name "$name" || die "模型名包含不支持的字符。" "The model name contains unsupported characters."
+      local delete_error
+      delete_error="$(curl --silent -H 'Content-Type: application/json' -d "{\"model\":\"$name\"}" "$BASE_URL/api/ollama/delete")" || die "无法连接 Bamai 服务。" "Could not reach the Bamai service."
+      if ! printf '%s' "$delete_error" | grep -q '"deleted"'; then
+        RESPONSE_JSON="$delete_error" python3 -c 'import json,os; print(json.loads(os.environ["RESPONSE_JSON"]).get("detail",""))' 2>/dev/null || true
+        die "模型删除失败。" "Model deletion failed."
+      fi
+      say "模型 $name 已删除（磁盘文件已释放）。" "Model $name deleted (disk space reclaimed)."
+      ;;
     *)
-      say "用法：./bamai model list | use <模型> | pull <模型>" "Usage: ./bamai model list | use <model> | pull <model>"
+      say "用法：./bamai model list | use <模型> | pull <模型> | rm <模型>" "Usage: ./bamai model list | use <model> | pull <model> | rm <model>"
       [[ -n "$action" ]] && return 1 || return 0
       ;;
   esac

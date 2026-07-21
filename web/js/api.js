@@ -35,6 +35,10 @@ export const api = {
     body: JSON.stringify({model}),
   }),
   pullStatus: () => request("/api/ollama/pull/status"),
+  deleteModel: model => request("/api/ollama/delete", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({model}),
+  }),
   toolbox: () => request("/api/toolbox"),
   runProbe: (probeId, params) => request(`/api/toolbox/${encodeURIComponent(probeId)}/run`, {
     method: "POST", headers: {"Content-Type": "application/json"},

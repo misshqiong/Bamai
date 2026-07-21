@@ -271,6 +271,25 @@ def create_app(
             raise HTTPException(status_code=503, detail="Ollama 未就绪") from exc
         return {"installed": installed, "recommended": RECOMMENDED_MODELS}
 
+    @application.post("/api/ollama/delete")
+    async def delete_model(payload: PullRequest) -> dict:
+        # 停用（切换到其他模型）不删文件；删除是显式操作，且不允许删当前使用中的模型
+        if payload.model == application.state.settings.read()["model"]:
+            raise HTTPException(
+                status_code=422, detail="不能删除当前使用中的模型，请先切换到其他模型"
+            )
+        try:
+            installed = {item["name"] for item in await active_agent().list_models()}
+        except (httpx.HTTPError, OllamaError) as exc:
+            raise HTTPException(status_code=503, detail="Ollama 未就绪") from exc
+        if payload.model not in installed:
+            raise HTTPException(status_code=404, detail="模型未安装")
+        try:
+            await active_agent().delete_model(payload.model)
+        except (httpx.HTTPError, OllamaError) as exc:
+            raise HTTPException(status_code=502, detail="Ollama 删除模型失败") from exc
+        return {"deleted": payload.model}
+
     @application.post("/api/ollama/pull", status_code=202)
     def pull_model(payload: PullRequest) -> dict:
         if not application.state.pull_manager.start(payload.model):

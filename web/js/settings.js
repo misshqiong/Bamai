@@ -89,6 +89,12 @@ class SettingsController {
         download.type = "button"; download.className = "secondary"; download.textContent = t("settings.download");
         download.addEventListener("click", () => this.pull(recommendation.name));
         row.append(download);
+      } else if (recommendation.name !== this.settings?.model) {
+        // 当前使用中的模型不显示删除按钮：停用（切换）不删文件，删除是显式操作
+        const remove = document.createElement("button");
+        remove.type = "button"; remove.className = "secondary danger"; remove.textContent = t("settings.delete");
+        remove.addEventListener("click", () => this.delete(recommendation.name));
+        row.append(remove);
       }
       this.models.append(row);
     }
@@ -118,6 +124,17 @@ class SettingsController {
       this.message.textContent = t("settings.saveFailed", {message: error.message});
     } finally {
       button.disabled = false;
+    }
+  }
+
+  async delete(model) {
+    if (!window.confirm(t("settings.deleteConfirm", {model}))) return;
+    try {
+      await api.deleteModel(model);
+      this.message.textContent = t("settings.deleted", {model});
+      await this.loadModels();
+    } catch (error) {
+      this.message.textContent = t("settings.deleteFailed", {message: error.message});
     }
   }
 

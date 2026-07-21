@@ -123,6 +123,7 @@ td:last-child, th:last-child { text-align: right; }
 .chat-guide h3 { color: var(--text); font-size: 17px; margin: 14px 0 7px; }
 .chat-guide code { display: block; margin: 14px 0; padding: 10px; background: #080d13; border: 1px solid var(--border); border-radius: 8px; color: var(--green); text-align: left; font-size: 11px; overflow-wrap: anywhere; }
 .secondary { border: 1px solid #345466; background: #12222c; border-radius: 8px; padding: 8px 13px; cursor: pointer; }.secondary:disabled { opacity: .5; }
+.secondary.danger { border-color: #6b3040; color: #ff8f9e; }
 .pilot-orb { margin: auto; display: grid; place-items: center; width: 54px; height: 54px; border-radius: 18px; color: #071218; font-weight: 900; font-size: 20px; background: linear-gradient(145deg, var(--cyan), var(--green)); box-shadow: 0 0 35px rgba(56,215,255,.18); }
 .chat-messages { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 2px; }
 .chat-message { display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 13px; font-size: 12px; line-height: 1.55; }

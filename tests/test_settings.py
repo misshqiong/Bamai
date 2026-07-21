@@ -10,11 +10,17 @@ from server.settings import DEFAULT_SETTINGS, SettingsStore
 
 
 class SettingsAgent:
+    def __init__(self):
+        self.deleted = []
+
     async def list_models(self):
         return [
             {"name": "qwen3:4b", "size": 3_000_000_000},
             {"name": "qwen3:8b", "size": 6_000_000_000},
         ]
+
+    async def delete_model(self, name):
+        self.deleted.append(name)
 
     async def status(self):
         return {"available": True, "model_pulled": True, "model": "qwen3:4b"}
@@ -102,7 +108,7 @@ def test_model_list_and_pull_endpoints(db, tmp_path):
         assert models.status_code == 200
         assert models.json()["installed"][1]["name"] == "qwen3:8b"
         assert [item["name"] for item in models.json()["recommended"]] == [
-            "qwen3:4b", "qwen3:8b", "qwen3:14b"
+            "qwen3:4b", "qwen3:8b", "qwen3:14b", "glm4:9b", "mistral:7b"
         ]
         started = client.post("/api/ollama/pull", json={"model": "qwen3:14b"})
         assert started.status_code == 202
@@ -110,3 +116,24 @@ def test_model_list_and_pull_endpoints(db, tmp_path):
             "model": "qwen3:14b", "status": "pulling", "percent": 0
         }
         assert client.post("/api/ollama/pull", json={"model": "qwen3:8b"}).status_code == 409
+
+
+def test_model_delete_endpoint_guards_current_and_missing_models(db, tmp_path):
+    agent = SettingsAgent()
+    with TestClient(create_app(
+        db,
+        collector_enabled=False,
+        agent_client=agent,
+        settings_store=SettingsStore(tmp_path / "config.json"),
+    )) as client:
+        # 当前使用中的模型（默认 qwen3:4b）不可删除：停用（切换）与删除是两回事
+        blocked = client.post("/api/ollama/delete", json={"model": "qwen3:4b"})
+        assert blocked.status_code == 422
+        assert "先切换" in blocked.json()["detail"]
+        # 未安装的模型返回 404
+        assert client.post("/api/ollama/delete", json={"model": "missing:1b"}).status_code == 404
+        # 已安装且非当前模型可删除
+        deleted = client.post("/api/ollama/delete", json={"model": "qwen3:8b"})
+        assert deleted.status_code == 200
+        assert deleted.json() == {"deleted": "qwen3:8b"}
+        assert agent.deleted == ["qwen3:8b"]

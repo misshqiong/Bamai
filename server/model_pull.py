@@ -17,6 +17,8 @@ RECOMMENDED_MODELS = [
     {"name": "qwen3:4b", "size_gb": 3, "memory_gb": 8},
     {"name": "qwen3:8b", "size_gb": 6, "memory_gb": 16},
     {"name": "qwen3:14b", "size_gb": 10, "memory_gb": 24},
+    {"name": "glm4:9b", "size_gb": 6, "memory_gb": 16},
+    {"name": "mistral:7b", "size_gb": 4, "memory_gb": 8},
 ]
 
 
