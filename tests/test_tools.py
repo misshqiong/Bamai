@@ -5,7 +5,9 @@ from pathlib import Path
 import pytest
 
 from server.collector import parse_nettop_output
+from server.agent.tools import ToolError, ToolExecutor
 from server.search.files import find_large_files, mdfind_search
+from tests.conftest import metric
 
 
 def test_parse_nettop_csv_with_dotted_process_name():
@@ -45,3 +47,50 @@ def test_large_file_relative_escape_is_rejected():
     with pytest.raises(ValueError, match="不能越出"):
         find_large_files("../../../../tmp", min_mb=1)
 
+
+def test_all_eight_agent_tools_dispatch_with_compact_results(db):
+    db.insert_metric(metric(100, cpu_percent=42.6))
+    db.insert_disk_usage(100, [{"mount": "/", "total": 1000, "used": 400, "percent": 40.4}])
+    db.insert_process_snapshots(100, [{
+        "pid": 7, "name": "worker", "cpu_percent": 12.7,
+        "memory_rss": 123456, "cmdline": "worker --serve",
+    }])
+    db.insert_process_net(100, [{
+        "pid": 7, "name": "worker", "up_bps": 2000.8, "down_bps": 3000.2,
+    }])
+    db.create_event(100, "cpu_high", "warning", "CPU 高", "详情")
+    tools = ToolExecutor(
+        db,
+        process_provider=lambda sort, limit: [{
+            "pid": 7, "name": "worker", "cpu_percent": 12.7,
+            "memory_rss": 123456, "cmdline": "worker --serve",
+        }],
+        process_search=lambda keyword, limit: [{"pid": 7, "name": keyword}],
+        file_search=lambda query, kind, limit: [{"path": f"/tmp/{query}", "size": 10.8}],
+        large_file_search=lambda path, min_mb, limit: {
+            "items": [{"path": f"{path}/large.bin", "size_mb": 150.6}], "truncated": False
+        },
+    )
+
+    results = [
+        tools.execute("get_current_stats"),
+        tools.execute("get_top_processes", {"sort_by": "cpu", "limit": 5}),
+        tools.execute("query_metrics", {"metric": "cpu_percent", "start_ts": 0, "end_ts": 200}),
+        tools.execute("get_process_history", {"start_ts": 0, "end_ts": 200, "name": "work"}),
+        tools.execute("get_events", {"limit": 10, "since_ts": 0}),
+        tools.execute("find_large_files", {"path": "/tmp", "min_mb": 100, "limit": 10}),
+        tools.execute("search_files", {"query": "报告", "kind": "name", "limit": 10}),
+        tools.execute("search_processes", {"keyword": "worker"}),
+    ]
+    assert len(results) == 8
+    assert results[0].data["cpu_percent"] == 43
+    assert len(results[2].data["series"]) <= 50
+    assert all(result.summary for result in results)
+
+
+def test_agent_tool_parameter_validation(db):
+    tools = ToolExecutor(db)
+    with pytest.raises(ToolError, match="超出允许范围"):
+        tools.execute("get_top_processes", {"sort_by": "cpu", "limit": 16})
+    with pytest.raises(ToolError, match="未知工具"):
+        tools.execute("not_a_tool", {})

@@ -1,7 +1,8 @@
-"""基于近期采样数据的规则引擎。Phase 1 仅生成事件，不做 AI 诊断。"""
+"""基于近期采样数据的规则引擎与异步 AI 诊断触发。"""
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from typing import Callable
@@ -9,6 +10,9 @@ from typing import Callable
 from . import config
 from .db import Database
 from .notify import send_notification
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -25,9 +29,11 @@ class RuleEngine:
         self,
         db: Database,
         notifier: Callable[[str, str], bool] = send_notification,
+        diagnoser: Callable[[int, dict], object] | None = None,
     ) -> None:
         self.db = db
         self.notifier = notifier
+        self.diagnoser = diagnoser
 
     def evaluate(self, now: int | None = None) -> list[int]:
         now = int(time.time()) if now is None else int(now)
@@ -45,7 +51,18 @@ class RuleEngine:
                         now, kind, result.severity, result.title, result.detail
                     )
                     created.append(event_id)
-                    self.notifier(result.title, result.detail)
+                    try:
+                        self.notifier(result.title, result.detail)
+                    except Exception as exc:
+                        logger.warning("事件 %s 的系统通知失败: %s", event_id, exc)
+                    if self.diagnoser is not None:
+                        try:
+                            self.diagnoser(event_id, {
+                                "ts": now, "kind": kind, "severity": result.severity,
+                                "title": result.title, "detail": result.detail,
+                            })
+                        except Exception as exc:
+                            logger.warning("事件 %s 的 AI 诊断调度失败: %s", event_id, exc)
             elif result.active is False:
                 self.db.resolve_events(kind, now)
         return created

@@ -76,3 +76,18 @@ def test_incomplete_windows_do_not_resolve_existing_events(db):
     rules, _ = engine(db)
     rules.evaluate(now)
     assert db.list_events()[0]["resolved_ts"] is None
+
+
+def test_new_event_schedules_ai_diagnosis_without_changing_event_creation(db):
+    now = 600_000
+    db.insert_disk_usage(now, [{"mount": "/", "total": 100, "used": 96, "percent": 96}])
+    scheduled = []
+    rules = RuleEngine(
+        db,
+        notifier=lambda *_: True,
+        diagnoser=lambda event_id, event: scheduled.append((event_id, event)),
+    )
+    created = rules.evaluate(now)
+    assert created == [scheduled[0][0]]
+    assert scheduled[0][1]["kind"] == "disk_full"
+    assert db.list_events()[0]["ai_analysis"] is None

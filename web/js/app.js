@@ -1,4 +1,5 @@
 import {api} from "./api.js";
+import {initChat} from "./chat.js";
 import {HistoryChart, RealtimeCharts, formatBytes, formatRate} from "./charts.js";
 
 const realtimeCharts = new RealtimeCharts();
@@ -109,6 +110,5 @@ function bindControls() {
   byId("large-form").addEventListener("submit", async event => { event.preventDefault(); const target = byId("large-results"); target.innerHTML = '<p class="loading">正在扫描，最多等待 30 秒…</p>'; try { const result = await api.largeFiles(byId("large-path").value, byId("large-min").value); renderFiles(target, result.items, result.truncated); } catch (error) { target.innerHTML = `<p class="error"></p>`; target.firstChild.textContent = error.message; } });
 }
 
-bindControls(); connectRealtime(); loadOverview(); loadHistory(); loadProcesses(); loadEvents();
+bindControls(); initChat(); connectRealtime(); loadOverview(); loadHistory(); loadProcesses(); loadEvents();
 setInterval(loadOverview, 15000); setInterval(loadProcesses, 5000); setInterval(loadEvents, 30000);
-

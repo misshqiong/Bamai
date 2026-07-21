@@ -261,6 +261,23 @@ class Database:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def process_history(
+        self, start: int, end: int, name: str | None = None, limit: int = 30
+    ) -> list[dict[str, Any]]:
+        if end < start:
+            raise ValueError("end 必须大于等于 start")
+        pattern = f"%{name.strip()}%" if name and name.strip() else "%"
+        with self.connect(read_only=True) as conn:
+            rows = conn.execute(
+                "SELECT name, COUNT(*) AS samples, AVG(cpu_percent) AS cpu_avg, "
+                "MAX(cpu_percent) AS cpu_max, AVG(memory_rss) AS memory_avg, "
+                "MAX(memory_rss) AS memory_max, MAX(ts) AS last_ts "
+                "FROM process_snapshots WHERE ts BETWEEN ? AND ? AND name LIKE ? "
+                "GROUP BY name ORDER BY cpu_max DESC, memory_max DESC LIMIT ?",
+                (start, end, pattern, max(1, min(int(limit), 100))),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def create_event(
         self, ts: int, kind: str, severity: str, title: str, detail: str
     ) -> int:
@@ -287,12 +304,28 @@ class Database:
             )
             return cursor.rowcount
 
-    def list_events(self, limit: int = 50) -> list[dict[str, Any]]:
+    def list_events(
+        self, limit: int = 50, since_ts: int | None = None
+    ) -> list[dict[str, Any]]:
         with self.connect(read_only=True) as conn:
-            rows = conn.execute(
-                "SELECT * FROM events ORDER BY ts DESC LIMIT ?", (limit,)
-            ).fetchall()
+            if since_ts is None:
+                rows = conn.execute(
+                    "SELECT * FROM events ORDER BY ts DESC LIMIT ?", (limit,)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM events WHERE ts>=? ORDER BY ts DESC LIMIT ?",
+                    (int(since_ts), limit),
+                ).fetchall()
         return [dict(row) for row in rows]
+
+    def update_event_ai_analysis(self, event_id: int, analysis: str) -> bool:
+        with self._write_lock, self.connect() as conn:
+            cursor = conn.execute(
+                "UPDATE events SET ai_analysis=? WHERE id=?",
+                (analysis.strip(), int(event_id)),
+            )
+            return cursor.rowcount > 0
 
     def unresolved_event_count(self) -> int:
         with self.connect(read_only=True) as conn:

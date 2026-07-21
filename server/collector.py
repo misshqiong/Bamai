@@ -250,3 +250,28 @@ def list_processes(sort: str = "cpu", limit: int = 20) -> list[dict[str, Any]]:
             continue
     key = "cpu_percent" if sort == "cpu" else "memory_rss"
     return sorted(rows, key=lambda row: row[key], reverse=True)[:limit]
+
+
+def search_running_processes(keyword: str, limit: int = 20) -> list[dict[str, Any]]:
+    """按名称或命令行模糊匹配当前进程。"""
+    needle = keyword.strip().lower()
+    if not needle:
+        return []
+    matched: list[dict[str, Any]] = []
+    for process in psutil.process_iter(["pid", "name", "cpu_percent", "memory_info", "cmdline"]):
+        try:
+            info = process.info
+            name = info.get("name") or "未知"
+            cmdline = " ".join(info.get("cmdline") or [])[:200]
+            if needle not in name.lower() and needle not in cmdline.lower():
+                continue
+            memory = info.get("memory_info")
+            matched.append({
+                "pid": int(info["pid"]), "name": name,
+                "cpu_percent": float(info.get("cpu_percent") or 0),
+                "memory_rss": int(memory.rss if memory else 0), "cmdline": cmdline,
+            })
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+    matched.sort(key=lambda row: (row["cpu_percent"], row["memory_rss"]), reverse=True)
+    return matched[:max(1, min(int(limit), 50))]

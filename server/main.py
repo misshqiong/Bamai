@@ -11,8 +11,17 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from . import config
+from .agent.ollama_client import (
+    INSTALL_GUIDE,
+    EventDiagnoser,
+    OllamaClient,
+    OllamaError,
+    OllamaUnavailable,
+)
+from .agent.tools import ToolExecutor
 from .collector import Collector, list_processes
 from .db import Database, METRIC_COLUMNS
 from .rules import RuleEngine
@@ -26,10 +35,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=20_000)
+
+
+class ChatRequest(BaseModel):
+    messages: list[ChatMessage] = Field(min_length=1, max_length=50)
+
+
 def create_app(
     database: Database | None = None,
     *,
     collector_enabled: bool | None = None,
+    agent_client: OllamaClient | None = None,
 ) -> FastAPI:
     if collector_enabled is None:
         collector_enabled = os.environ.get("MACPILOT_DISABLE_COLLECTOR") != "1"
@@ -38,8 +57,12 @@ def create_app(
     async def lifespan(application: FastAPI):
         if application.state.db is None:
             application.state.db = Database()
+        if application.state.agent is None:
+            application.state.agent = OllamaClient(ToolExecutor(application.state.db))
         if collector_enabled:
-            rules = RuleEngine(application.state.db)
+            diagnoser = EventDiagnoser(application.state.db, application.state.agent)
+            application.state.diagnoser = diagnoser
+            rules = RuleEngine(application.state.db, diagnoser=diagnoser.schedule)
             collector = Collector(application.state.db, rules)
             application.state.collector = collector
             collector.start()
@@ -47,10 +70,14 @@ def create_app(
         yield
         if application.state.collector is not None:
             application.state.collector.stop()
+        if application.state.diagnoser is not None:
+            application.state.diagnoser.close()
 
     application = FastAPI(title=config.APP_NAME, lifespan=lifespan)
     application.state.db = database
     application.state.collector = None
+    application.state.agent = agent_client
+    application.state.diagnoser = None
 
     def active_db() -> Database:
         db = application.state.db
@@ -59,6 +86,13 @@ def create_app(
             db = Database()
             application.state.db = db
         return db
+
+    def active_agent() -> OllamaClient:
+        client = application.state.agent
+        if client is None:
+            client = OllamaClient(ToolExecutor(active_db()))
+            application.state.agent = client
+        return client
 
     @application.get("/", include_in_schema=False)
     def index() -> FileResponse:
@@ -77,18 +111,18 @@ def create_app(
             return
 
     @application.get("/api/overview")
-    def overview() -> dict:
+    async def overview() -> dict:
         db = active_db()
         top = db.latest_process_snapshots(5)
         if not top:
             top = list_processes("cpu", 5)
+        ollama = await active_agent().status()
         return {
             "metric": db.latest_metric(),
             "disks": db.latest_disk_usage(),
             "top_processes": top,
             "unresolved_events": db.unresolved_event_count(),
-            # Phase 1 明确不接入 Ollama，但保持 overview 的既定字段形状。
-            "ollama": {"available": False, "model_pulled": False, "model": "qwen3:4b", "phase": 1},
+            "ollama": ollama,
         }
 
     @application.get("/api/metrics")
@@ -120,6 +154,34 @@ def create_app(
     @application.get("/api/events")
     def events(limit: int = Query(50, ge=1, le=200)) -> dict:
         return {"items": active_db().list_events(limit)}
+
+    @application.get("/api/ollama/status")
+    async def ollama_status() -> dict:
+        return await active_agent().status()
+
+    @application.post("/api/chat")
+    async def chat(payload: ChatRequest) -> dict:
+        client = active_agent()
+        status = await client.status()
+        if not status["available"] or not status["model_pulled"]:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Ollama 或模型 {config.OLLAMA_MODEL} 未就绪。请运行：{INSTALL_GUIDE}",
+            )
+        messages = [message.model_dump() for message in payload.messages]
+        try:
+            result = await asyncio.wait_for(
+                client.chat(messages), timeout=config.OLLAMA_CHAT_TIMEOUT_SECONDS
+            )
+        except OllamaUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except TimeoutError as exc:
+            raise HTTPException(status_code=504, detail="Ollama 回答超时（120 秒）") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except OllamaError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return {"reply": result.reply, "tool_trace": result.tool_trace}
 
     @application.get("/api/search/files")
     def search_files(

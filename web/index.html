@@ -97,13 +97,25 @@
 
     <aside id="chat-panel" class="chat-panel">
       <button id="chat-toggle" class="chat-toggle" title="折叠聊天栏">›</button>
-      <div class="chat-header"><p class="eyebrow">LOCAL AI</p><h2>系统助手</h2></div>
-      <div class="chat-placeholder"><div class="pilot-orb">M</div><h3>AI 未接入</h3><p>Phase 1 已提供完整系统监控。自然语言诊断与问答将在下一阶段接入。</p></div>
-      <div class="chat-input"><input disabled placeholder="AI 未接入"><button disabled>发送</button></div>
+      <div class="chat-header">
+        <div><p class="eyebrow">LOCAL AI</p><h2>系统助手</h2></div>
+        <span id="ollama-state" class="ollama-state">检测中</span>
+      </div>
+      <div id="ollama-guide" class="chat-guide hidden">
+        <div class="pilot-orb">M</div>
+        <h3>Ollama 未就绪</h3>
+        <p>安装 Ollama 并下载本地模型后即可对话。监控功能不受影响。</p>
+        <code>brew install ollama &amp;&amp; ollama pull qwen3:4b</code>
+        <button id="ollama-retry" class="secondary" type="button">重新检测</button>
+      </div>
+      <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
+      <form id="chat-form" class="chat-input">
+        <textarea id="chat-text" rows="1" disabled placeholder="询问当前系统状态…"></textarea>
+        <button id="chat-send" type="submit" disabled>发送</button>
+      </form>
     </aside>
   </div>
   <script src="/static/vendor/echarts.min.js"></script>
   <script type="module" src="/static/js/app.js"></script>
 </body>
 </html>
-
