@@ -67,6 +67,15 @@ class PullRequest(BaseModel):
     model: str = Field(min_length=1, max_length=200)
 
 
+EXPLAIN_TIMEOUT_MESSAGES = {
+    "zh": "AI 解读超时。模型可能正在加载（闲置后需重新载入内存），请稍后重试。",
+    "en": (
+        "AI explanation timed out. The model may still be loading "
+        "after being idle — please try again."
+    ),
+}
+
+
 def create_app(
     database: Database | None = None,
     *,
@@ -348,7 +357,7 @@ def create_app(
         except OllamaUnavailable as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except TimeoutError as exc:
-            raise HTTPException(status_code=504, detail="AI probe explanation timed out") from exc
+            raise HTTPException(status_code=504, detail=EXPLAIN_TIMEOUT_MESSAGES[language]) from exc
         except OllamaError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         return {"reply": result.reply}
@@ -415,7 +424,7 @@ def create_app(
         except OllamaUnavailable as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except TimeoutError as exc:
-            raise HTTPException(status_code=504, detail="AI health explanation timed out") from exc
+            raise HTTPException(status_code=504, detail=EXPLAIN_TIMEOUT_MESSAGES[language]) from exc
         except OllamaError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         return {"reply": result.reply}
