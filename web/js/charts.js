@@ -1,13 +1,13 @@
 const palette = {cyan: "#38d7ff", green: "#42e59e", violet: "#9b8cff", amber: "#ffc857"};
 const axis = {axisLine: {lineStyle: {color: "#263241"}}, axisLabel: {color: "#748397", fontSize: 9}, splitLine: {lineStyle: {color: "#1d2632"}}};
 
-function baseOption(series, valueFormatter = value => value) {
+function baseOption(series, valueFormatter = value => value, yFormatter = null) {
   return {
     animation: false,
-    grid: {left: 43, right: 12, top: 14, bottom: 28},
+    grid: {left: 56, right: 12, top: 14, bottom: 28},
     tooltip: {trigger: "axis", backgroundColor: "#121923", borderColor: "#2a3747", textStyle: {color: "#e8eef5", fontSize: 11}, valueFormatter},
     xAxis: {type: "time", ...axis, splitLine: {show: false}},
-    yAxis: {type: "value", ...axis},
+    yAxis: {type: "value", ...axis, axisLabel: {...axis.axisLabel, formatter: yFormatter || (value => value)}},
     series,
   };
 }
@@ -23,10 +23,10 @@ export class RealtimeCharts {
     this.disk = echarts.init(document.querySelector("#disk-io-chart"));
     this.core = echarts.init(document.querySelector("#core-chart"));
     this.points = [];
-    this.cpuMemory.setOption(baseOption([line("CPU %", palette.cyan), line("内存 %", palette.violet)], value => `${Number(value).toFixed(1)}%`));
-    this.network.setOption(baseOption([line("上传", palette.green), line("下载", palette.cyan)], formatRate));
-    this.disk.setOption(baseOption([line("读取", palette.amber), line("写入", palette.violet)], formatRate));
-    this.core.setOption(baseOption([]));
+    this.cpuMemory.setOption(baseOption([line("CPU %", palette.cyan), line("内存 %", palette.violet)], value => `${Number(value).toFixed(1)}%`, value => `${value}%`));
+    this.network.setOption(baseOption([line("上传", palette.green), line("下载", palette.cyan)], formatRate, formatBytes));
+    this.disk.setOption(baseOption([line("读取", palette.amber), line("写入", palette.violet)], formatRate, formatBytes));
+    this.core.setOption(baseOption([], value => `${Number(value).toFixed(1)}%`, value => `${value}%`));
     addEventListener("resize", () => this.resize());
   }
   push(metric) {
@@ -38,7 +38,9 @@ export class RealtimeCharts {
     this.network.setOption({series: [{data: values("net_up_bps")}, {data: values("net_down_bps")}]});
     this.disk.setOption({series: [{data: values("disk_read_bps")}, {data: values("disk_write_bps")}]});
     const count = metric.cpu_per_core?.length || 0;
-    this.core.setOption({series: Array.from({length: count}, (_, index) => ({...line(`核心 ${index + 1}`, [palette.cyan, palette.green, palette.violet, palette.amber][index % 4]), data: this.points.map(item => [item.ts * 1000, item.cpu_per_core?.[index] || 0])}))}, true);
+    // notMerge 全量替换时必须带上完整 option，否则坐标轴配置会被清空导致 ECharts 抛错
+    const coreSeries = Array.from({length: count}, (_, index) => ({...line(`核心 ${index + 1}`, [palette.cyan, palette.green, palette.violet, palette.amber][index % 4]), data: this.points.map(item => [item.ts * 1000, item.cpu_per_core?.[index] || 0])}));
+    this.core.setOption(baseOption(coreSeries, value => `${Number(value).toFixed(1)}%`, value => `${value}%`), true);
   }
   resize() { this.cpuMemory.resize(); this.network.resize(); this.disk.resize(); this.core.resize(); }
 }
@@ -53,7 +55,7 @@ export class HistoryChart {
     this.chart.setOption(baseOption([
       {...line("平均", palette.cyan), data: points.map(point => [point.ts * 1000, point.avg])},
       {...line("峰值", palette.amber), areaStyle: undefined, lineStyle: {width: 1, type: "dashed", color: palette.amber}, data: points.map(point => [point.ts * 1000, point.max])},
-    ], rates ? formatRate : value => Number(value).toFixed(1)), true);
+    ], rates ? formatRate : value => Number(value).toFixed(1), rates ? formatBytes : null), true);
   }
 }
 
