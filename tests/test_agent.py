@@ -55,6 +55,12 @@ def test_ollama_tool_loop_sends_think_false_and_strips_think_tags():
     assert len(requests[0]["tools"]) == 8
 
 
+def test_reply_strips_think_content_without_opening_tag():
+    # qwen3 经 Ollama 输出时可能缺失开头 <think>，只留结尾 </think>
+    message = {"content": "先分析一下内存数据……\n</think>\n\n内存占用前三名如下。"}
+    assert OllamaClient._reply_content(message) == "内存占用前三名如下。"
+
+
 def test_ollama_forces_direct_answer_after_six_tool_rounds():
     requests = []
 

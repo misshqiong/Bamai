@@ -176,7 +176,12 @@ class OllamaClient:
         content = message.get("content")
         if not isinstance(content, str):
             raise OllamaError("Ollama 最终回复缺少文本内容")
-        reply = THINK_PATTERN.sub("", content).strip()
+        reply = THINK_PATTERN.sub("", content)
+        # qwen3 经 Ollama 输出时可能缺失开头的 <think> 标签，只留结尾 </think>，
+        # 此时成对匹配的正则不生效，直接丢弃最后一个 </think> 之前的全部内容。
+        if "</think>" in reply:
+            reply = reply.rsplit("</think>", 1)[1]
+        reply = reply.strip()
         return reply or "Ollama 未返回可显示的内容。"
 
 
