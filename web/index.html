@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MacPilot · 本地系统监控</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+  <div class="app-shell">
+    <main class="main-area">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">LOCAL SYSTEM MONITOR</p>
+          <h1>MacPilot</h1>
+        </div>
+        <div class="connection"><span id="ws-dot" class="status-dot"></span><span id="ws-status">正在连接</span></div>
+      </header>
+
+      <nav class="tabs" aria-label="主视图">
+        <button class="tab active" data-view="dashboard">仪表盘</button>
+        <button class="tab" data-view="search">文件搜索</button>
+      </nav>
+
+      <section id="dashboard-view" class="view active">
+        <div class="status-grid">
+          <article class="status-card cpu"><span>CPU</span><strong id="cpu-value">--%</strong><small id="load-value">负载 --</small></article>
+          <article class="status-card memory"><span>内存</span><strong id="memory-value">--%</strong><small id="memory-detail">-- / --</small></article>
+          <article class="status-card disk"><span>磁盘</span><strong id="disk-value">--%</strong><small id="disk-detail">正在采集</small></article>
+          <article class="status-card network"><span>网络</span><strong id="network-value">--</strong><small id="network-detail">↑ -- · ↓ --</small></article>
+        </div>
+
+        <section class="panel">
+          <div class="panel-heading"><div><p class="eyebrow">LIVE · 5 MIN</p><h2>实时曲线</h2></div></div>
+          <div class="chart-grid">
+            <div><h3>CPU / 内存</h3><div id="cpu-memory-chart" class="chart"></div></div>
+            <div><h3>网络吞吐</h3><div id="network-chart" class="chart"></div></div>
+            <div><h3>磁盘 I/O</h3><div id="disk-io-chart" class="chart"></div></div>
+            <div><h3>每核 CPU</h3><div id="core-chart" class="chart"></div></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading history-controls">
+            <div><p class="eyebrow">HISTORY</p><h2>历史趋势</h2></div>
+            <div class="control-row">
+              <select id="history-metric" aria-label="历史指标">
+                <option value="cpu_percent">CPU</option><option value="mem_percent">内存</option>
+                <option value="net_down_bps">网络下载</option><option value="net_up_bps">网络上传</option>
+                <option value="disk_read_bps">磁盘读取</option><option value="disk_write_bps">磁盘写入</option>
+              </select>
+              <div id="range-buttons" class="segmented">
+                <button data-hours="1" class="active">1h</button><button data-hours="6">6h</button>
+                <button data-hours="24">24h</button><button data-hours="168">7d</button>
+              </div>
+            </div>
+          </div>
+          <div id="history-chart" class="chart history-chart"></div>
+        </section>
+
+        <div class="lower-grid">
+          <section class="panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">PROCESSES</p><h2>资源进程</h2></div>
+              <div id="process-sort" class="segmented"><button data-sort="cpu" class="active">CPU</button><button data-sort="memory">内存</button><button data-sort="network">网络</button></div>
+            </div>
+            <div class="table-wrap"><table><thead><tr><th>进程</th><th>PID</th><th id="process-value-head">CPU</th></tr></thead><tbody id="process-body"></tbody></table></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">ALERTS</p><h2>异常事件 <span id="event-count" class="badge">0</span></h2></div></div>
+            <div id="events-list" class="events-list"><p class="empty">暂无事件</p></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="search-view" class="view">
+        <section class="panel search-panel">
+          <div><p class="eyebrow">SPOTLIGHT</p><h2>文件名与内容搜索</h2></div>
+          <form id="search-form" class="search-form">
+            <input id="search-query" required placeholder="输入文件名或内容关键词" autocomplete="off">
+            <select id="search-kind"><option value="name">文件名</option><option value="content">文件内容</option></select>
+            <button class="primary" type="submit">搜索</button>
+          </form>
+          <div id="search-results" class="file-results"><p class="empty">使用 macOS Spotlight 在本机查找文件</p></div>
+        </section>
+        <section class="panel search-panel">
+          <div><p class="eyebrow">STORAGE SCAN</p><h2>大文件扫描</h2></div>
+          <form id="large-form" class="search-form">
+            <input id="large-path" value="~" placeholder="扫描路径，例如 ~/Downloads">
+            <label class="inline-label">至少 <input id="large-min" type="number" min="0" value="100"> MB</label>
+            <button class="primary" type="submit">开始扫描</button>
+          </form>
+          <div id="large-results" class="file-results"><p class="empty">隐藏目录、.app 和 .framework 内部会自动跳过</p></div>
+        </section>
+      </section>
+    </main>
+
+    <aside id="chat-panel" class="chat-panel">
+      <button id="chat-toggle" class="chat-toggle" title="折叠聊天栏">›</button>
+      <div class="chat-header"><p class="eyebrow">LOCAL AI</p><h2>系统助手</h2></div>
+      <div class="chat-placeholder"><div class="pilot-orb">M</div><h3>AI 未接入</h3><p>Phase 1 已提供完整系统监控。自然语言诊断与问答将在下一阶段接入。</p></div>
+      <div class="chat-input"><input disabled placeholder="AI 未接入"><button disabled>发送</button></div>
+    </aside>
+  </div>
+  <script src="/static/vendor/echarts.min.js"></script>
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>
+
