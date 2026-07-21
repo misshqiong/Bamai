@@ -1,0 +1,344 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DATA_DIR="${BAMAI_DATA_DIR:-$HOME/.bamai}"
+PID_FILE="$DATA_DIR/bamai.pid"
+LOG_FILE="$DATA_DIR/bamai.log"
+OLLAMA_PID_FILE="$DATA_DIR/ollama.pid"
+OLLAMA_LOG_FILE="$DATA_DIR/ollama.log"
+CONFIG_FILE="${BAMAI_CONFIG_PATH:-$DATA_DIR/config.json}"
+BASE_URL="http://127.0.0.1:8737"
+OLLAMA_URL="${BAMAI_OLLAMA_URL:-http://127.0.0.1:11434}"
+OLLAMA_URL="${OLLAMA_URL%/}"
+
+say() { printf '%s / %s\n' "$1" "$2"; }
+die() { say "$1" "$2" >&2; exit 1; }
+
+usage() {
+  say "用法：./bamai <命令> [选项]" "Usage: ./bamai <command> [options]"
+  say "命令：start | stop | restart | status | logs | model | autostart" "Commands: start | stop | restart | status | logs | model | autostart"
+  say "选项：--foreground（前台运行），--with-ai（同时管理 Ollama）" "Options: --foreground (stay in foreground), --with-ai (also manage Ollama)"
+}
+
+ensure_data_dir() { mkdir -p "$DATA_DIR"; }
+
+is_running() {
+  [[ -f "$PID_FILE" ]] || return 1
+  local pid
+  pid="$(tr -dc '0-9' < "$PID_FILE")"
+  [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
+}
+
+configured_model() {
+  if [[ -f "$CONFIG_FILE" ]]; then
+    python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("model", "qwen3:4b"))' "$CONFIG_FILE" 2>/dev/null || printf '%s\n' 'qwen3:4b'
+  else
+    printf '%s\n' 'qwen3:4b'
+  fi
+}
+
+prepare_runtime() {
+  cd "$PROJECT_DIR"
+  local python_bin="python3"
+  [[ -x /opt/homebrew/bin/python3 ]] && python_bin=/opt/homebrew/bin/python3
+  if [[ ! -x .venv/bin/python ]]; then
+    say "首次运行：正在创建 Python 环境…" "First run: creating the Python environment…"
+    "$python_bin" -m venv .venv >/dev/null || die "无法创建 Python 环境。" "Could not create the Python environment."
+  fi
+  say "正在检查依赖…" "Checking dependencies…"
+  .venv/bin/python -m pip install --disable-pip-version-check -q -r requirements.txt >/dev/null 2>&1 || die "依赖安装失败。" "Dependency installation failed."
+  mkdir -p web/vendor
+  if [[ ! -s web/vendor/echarts.min.js ]]; then
+    say "正在下载本地图表组件…" "Downloading the local chart component…"
+    curl --fail --location --silent https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js --output web/vendor/echarts.min.js 2>/dev/null || die "图表组件下载失败。" "Chart component download failed."
+  fi
+}
+
+ollama_ready() { curl --fail --silent --max-time 2 "$OLLAMA_URL/api/tags" >/dev/null 2>&1; }
+
+start_ai() {
+  local model
+  model="$(configured_model)"
+  if ! command -v ollama >/dev/null 2>&1; then
+    say "未安装 Ollama；请运行：brew install ollama && ollama pull $model" "Ollama is not installed; run: brew install ollama && ollama pull $model"
+    if command -v brew >/dev/null 2>&1 && [[ -t 0 ]]; then
+      say "是否现在安装 Ollama？[y/N]" "Install Ollama now? [y/N]"
+      local answer
+      read -r answer
+      if [[ "$answer" =~ ^[Yy]$ ]]; then
+        say "正在通过 Homebrew 安装 Ollama…" "Installing Ollama with Homebrew…"
+        brew install ollama >/dev/null 2>&1 || die "Ollama 安装失败。" "Ollama installation failed."
+      else
+        return 0
+      fi
+    else
+      return 0
+    fi
+  fi
+  if ! ollama_ready; then
+    say "正在启动 Ollama…" "Starting Ollama…"
+    nohup ollama serve >>"$OLLAMA_LOG_FILE" 2>&1 &
+    printf '%s\n' "$!" > "$OLLAMA_PID_FILE"
+    local attempt
+    for attempt in {1..30}; do
+      ollama_ready && break
+      sleep 0.2
+    done
+  fi
+  if ! ollama_ready; then
+    say "Ollama 尚未就绪；监控仍会正常启动。" "Ollama is not ready yet; monitoring will still start normally."
+    return 0
+  fi
+  if ! ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -Fxq "$model"; then
+    if [[ -t 0 ]]; then
+      say "模型 $model 尚未安装，是否现在下载？[y/N]" "Model $model is not installed. Download it now? [y/N]"
+      local pull_answer
+      read -r pull_answer
+      if [[ "$pull_answer" =~ ^[Yy]$ ]]; then
+        say "正在下载模型 $model…" "Downloading model $model…"
+        if ollama pull "$model" >/dev/null 2>&1; then
+          say "模型 $model 下载完成。" "Model $model downloaded."
+        else
+          say "模型下载失败；可稍后运行 ./bamai model pull $model。" "Model download failed; you can run ./bamai model pull $model later."
+        fi
+      else
+        say "可稍后运行：./bamai model pull $model" "You can run this later: ./bamai model pull $model"
+      fi
+    else
+      say "模型 $model 尚未安装；请运行：./bamai model pull $model" "Model $model is not installed; run: ./bamai model pull $model"
+    fi
+  else
+    say "Ollama 与模型 $model 已就绪。" "Ollama and model $model are ready."
+  fi
+}
+
+open_dashboard() {
+  command -v open >/dev/null 2>&1 && open "$BASE_URL" >/dev/null 2>&1 || true
+}
+
+start_command() {
+  local foreground=false with_ai=false argument
+  for argument in "$@"; do
+    case "$argument" in
+      --foreground) foreground=true ;;
+      --with-ai) with_ai=true ;;
+      *) die "未知选项：$argument" "Unknown option: $argument" ;;
+    esac
+  done
+  ensure_data_dir
+  if is_running; then
+    say "Bamai 已在运行，正在打开控制台。" "Bamai is already running; opening the dashboard."
+    open_dashboard
+    return 0
+  fi
+  [[ -f "$PID_FILE" ]] && rm -f "$PID_FILE"
+  prepare_runtime
+  [[ "$with_ai" == true ]] && start_ai
+  cd "$PROJECT_DIR"
+  if [[ "$foreground" == true ]]; then
+    say "Bamai 正在前台运行：$BASE_URL" "Bamai is running in the foreground: $BASE_URL"
+    local foreground_pid_tmp="$PID_FILE.tmp.$$"
+    printf '%s\n' "$$" > "$foreground_pid_tmp"
+    mv "$foreground_pid_tmp" "$PID_FILE"
+    exec .venv/bin/uvicorn server.main:app --host 127.0.0.1 --port 8737
+  fi
+  say "正在后台启动 Bamai…" "Starting Bamai in the background…"
+  nohup .venv/bin/uvicorn server.main:app --host 127.0.0.1 --port 8737 >>"$LOG_FILE" 2>&1 &
+  local pid="$!"
+  local pid_tmp="$PID_FILE.tmp.$$"
+  printf '%s\n' "$pid" > "$pid_tmp"
+  mv "$pid_tmp" "$PID_FILE"
+  sleep 1
+  if ! kill -0 "$pid" 2>/dev/null; then
+    rm -f "$PID_FILE"
+    die "Bamai 启动失败，请运行 ./bamai logs 查看日志。" "Bamai failed to start; run ./bamai logs to inspect the log."
+  fi
+  say "Bamai 已启动：$BASE_URL（PID $pid）" "Bamai started: $BASE_URL (PID $pid)"
+  open_dashboard
+}
+
+stop_ai() {
+  if [[ -f "$OLLAMA_PID_FILE" ]]; then
+    local pid
+    pid="$(tr -dc '0-9' < "$OLLAMA_PID_FILE")"
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+      say "已停止由 Bamai 启动的 Ollama。" "Stopped the Ollama process started by Bamai."
+    fi
+    rm -f "$OLLAMA_PID_FILE"
+  else
+    say "Bamai 未管理 Ollama 进程。" "Bamai is not managing an Ollama process."
+  fi
+}
+
+stop_command() {
+  local with_ai=false argument
+  for argument in "$@"; do
+    case "$argument" in
+      --with-ai) with_ai=true ;;
+      *) die "未知选项：$argument" "Unknown option: $argument" ;;
+    esac
+  done
+  if ! is_running; then
+    [[ -f "$PID_FILE" ]] && rm -f "$PID_FILE"
+    say "Bamai 当前未运行。" "Bamai is not running."
+  else
+    local pid
+    pid="$(tr -dc '0-9' < "$PID_FILE")"
+    say "正在停止 Bamai（PID $pid）…" "Stopping Bamai (PID $pid)…"
+    kill "$pid" 2>/dev/null || true
+    local attempt
+    for attempt in {1..50}; do
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 0.1
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      die "Bamai 仍在停止中，请稍后重试。" "Bamai is still stopping; try again shortly."
+    fi
+    rm -f "$PID_FILE"
+    say "Bamai 已停止。" "Bamai stopped."
+  fi
+  [[ "$with_ai" == true ]] && stop_ai
+}
+
+restart_command() {
+  local args=("$@") with_ai=false argument
+  for argument in "${args[@]}"; do [[ "$argument" == --with-ai ]] && with_ai=true; done
+  if [[ "$with_ai" == true ]]; then stop_command --with-ai; else stop_command; fi
+  start_command "${args[@]}"
+}
+
+status_command() {
+  local with_ai=false argument
+  for argument in "$@"; do
+    case "$argument" in
+      --with-ai) with_ai=true ;;
+      *) die "未知选项：$argument" "Unknown option: $argument" ;;
+    esac
+  done
+  if is_running; then
+    say "服务进程：运行中（PID $(tr -dc '0-9' < "$PID_FILE")）" "Service process: running (PID $(tr -dc '0-9' < "$PID_FILE"))"
+  else
+    say "服务进程：未运行" "Service process: stopped"
+  fi
+  if curl --fail --silent --max-time 2 "$BASE_URL/api/health" >/dev/null 2>&1; then
+    say "端口 8737：可访问" "Port 8737: reachable"
+  else
+    say "端口 8737：不可访问" "Port 8737: unreachable"
+  fi
+  if ollama_ready; then
+    say "Ollama：已连接" "Ollama: connected"
+    local model
+    model="$(configured_model)"
+    if ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -Fxq "$model"; then
+      say "当前模型：$model（已安装）" "Current model: $model (installed)"
+    else
+      say "当前模型：$model（未安装）" "Current model: $model (not installed)"
+    fi
+  else
+    say "Ollama：未连接" "Ollama: unavailable"
+    say "当前模型：$(configured_model)（状态未知）" "Current model: $(configured_model) (status unknown)"
+  fi
+}
+
+logs_command() {
+  [[ "$#" -eq 0 ]] || die "logs 不接受选项。" "logs does not accept options."
+  ensure_data_dir
+  if [[ ! -f "$LOG_FILE" ]]; then
+    say "尚无日志：$LOG_FILE" "No log file yet: $LOG_FILE"
+    return 0
+  fi
+  say "正在跟随日志（按 Ctrl-C 退出）：$LOG_FILE" "Following log (press Ctrl-C to exit): $LOG_FILE"
+  tail -f "$LOG_FILE"
+}
+
+valid_model_name() { [[ "$1" =~ ^[A-Za-z0-9._:/-]+$ ]]; }
+
+model_command() {
+  local action="${1:-}" name="${2:-}"
+  [[ "$#" -le 2 ]] || die "model 参数过多。" "Too many model arguments."
+  case "$action" in
+    list)
+      [[ -z "$name" ]] || die "model list 不接受模型名。" "model list does not accept a model name."
+      local response
+      response="$(curl --fail --silent "$BASE_URL/api/ollama/models")" || die "无法读取模型列表；请先启动 Bamai 与 Ollama。" "Could not read models; start Bamai and Ollama first."
+      RESPONSE_JSON="$response" python3 -c 'import json,os; d=json.loads(os.environ["RESPONSE_JSON"]); print("已安装模型 / Installed models"); [print("模型：{}（{} 字节） / Model: {} ({} bytes)".format(x["name"], x.get("size",0), x["name"], x.get("size",0))) for x in d["installed"]]; print("推荐模型 / Recommended models"); [print("模型：{}（约 {} GB） / Model: {} (about {} GB)".format(x["name"], x["size_gb"], x["name"], x["size_gb"])) for x in d["recommended"]]'
+      say "模型列表读取完成。" "Model list loaded."
+      ;;
+    use)
+      [[ -n "$name" ]] || die "请指定模型名。" "Please provide a model name."
+      valid_model_name "$name" || die "模型名包含不支持的字符。" "The model name contains unsupported characters."
+      curl --fail --silent -H 'Content-Type: application/json' -d "{\"model\":\"$name\"}" "$BASE_URL/api/settings" >/dev/null 2>&1 || die "模型切换失败；只能选择已安装模型。" "Model switch failed; only installed models can be selected."
+      say "当前模型已切换为 $name。" "Current model changed to $name."
+      ;;
+    pull)
+      [[ -n "$name" ]] || die "请指定模型名。" "Please provide a model name."
+      valid_model_name "$name" || die "模型名包含不支持的字符。" "The model name contains unsupported characters."
+      curl --fail --silent -H 'Content-Type: application/json' -d "{\"model\":\"$name\"}" "$BASE_URL/api/ollama/pull" >/dev/null 2>&1 || die "无法开始模型下载；请确认 Bamai 与 Ollama 正在运行。" "Could not start the model download; make sure Bamai and Ollama are running."
+      say "已开始后台下载 $name；可在设置页查看进度。" "Started downloading $name in the background; view progress in Settings."
+      ;;
+    *)
+      say "用法：./bamai model list | use <模型> | pull <模型>" "Usage: ./bamai model list | use <model> | pull <model>"
+      [[ -n "$action" ]] && return 1 || return 0
+      ;;
+  esac
+}
+
+autostart_command() {
+  local action="${1:-}" with_ai=false
+  [[ -z "${2:-}" || "${2:-}" == --with-ai ]] || die "未知选项：${2:-}" "Unknown option: ${2:-}"
+  [[ "${2:-}" == --with-ai ]] && with_ai=true
+  [[ "$#" -le 2 ]] || die "autostart 参数过多。" "Too many autostart arguments."
+  local launch_dir="$HOME/Library/LaunchAgents" plist="$HOME/Library/LaunchAgents/com.bamai.app.plist"
+  case "$action" in
+    on)
+      mkdir -p "$launch_dir"
+      local with_ai_xml=""
+      [[ "$with_ai" == true ]] && with_ai_xml='      <string>--with-ai</string>'
+      local temporary="$plist.tmp.$$"
+      {
+        printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>'
+        printf '%s\n' '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+        printf '%s\n' '<plist version="1.0"><dict>'
+        printf '%s\n' '  <key>Label</key><string>com.bamai.app</string>'
+        printf '%s\n' '  <key>ProgramArguments</key><array>'
+        printf '      <string>%s/bamai</string>\n' "$PROJECT_DIR"
+        printf '%s\n' '      <string>start</string>' '      <string>--foreground</string>'
+        [[ -n "$with_ai_xml" ]] && printf '%s\n' "$with_ai_xml"
+        printf '%s\n' '  </array>'
+        printf '%s\n' '  <key>RunAtLoad</key><true/>'
+        printf '  <key>StandardOutPath</key><string>%s</string>\n' "$LOG_FILE"
+        printf '  <key>StandardErrorPath</key><string>%s</string>\n' "$LOG_FILE"
+        printf '%s\n' '</dict></plist>'
+      } > "$temporary"
+      mv "$temporary" "$plist"
+      launchctl bootout "gui/$(id -u)/com.bamai.app" >/dev/null 2>&1 || true
+      launchctl bootstrap "gui/$(id -u)" "$plist" >/dev/null 2>&1 || true
+      say "已开启登录自动启动。" "Login autostart enabled."
+      ;;
+    off)
+      launchctl bootout "gui/$(id -u)/com.bamai.app" >/dev/null 2>&1 || true
+      [[ -f "$plist" ]] && rm -f "$plist"
+      say "已关闭登录自动启动。" "Login autostart disabled."
+      ;;
+    *)
+      say "用法：./bamai autostart on|off [--with-ai]" "Usage: ./bamai autostart on|off [--with-ai]"
+      [[ -n "$action" ]] && return 1 || return 0
+      ;;
+  esac
+}
+
+command="${1:-}"
+[[ $# -gt 0 ]] && shift
+case "$command" in
+  start) start_command "$@" ;;
+  stop) stop_command "$@" ;;
+  restart) restart_command "$@" ;;
+  status) status_command "$@" ;;
+  logs) logs_command "$@" ;;
+  model) model_command "$@" ;;
+  autostart) autostart_command "$@" ;;
+  -h|--help|help|"") usage ;;
+  *) usage; die "未知命令：$command" "Unknown command: $command" ;;
+esac

@@ -21,6 +21,7 @@ WEB_DIR = PROJECT_ROOT / "web"
 LEGACY_DATA_DIR = Path("~/.macpilot").expanduser()
 DATA_DIR = Path(os.environ.get("BAMAI_DATA_DIR", "~/.bamai")).expanduser()
 DB_PATH = Path(os.environ.get("BAMAI_DB_PATH", DATA_DIR / "data.db")).expanduser()
+SETTINGS_PATH = Path(os.environ.get("BAMAI_CONFIG_PATH", DATA_DIR / "config.json")).expanduser()
 
 SAMPLE_INTERVAL_SECONDS = 3
 SLOW_SAMPLE_TICKS = 20

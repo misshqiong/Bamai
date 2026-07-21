@@ -41,3 +41,14 @@ def test_health_and_event_templates_exist_in_both_languages():
     }
     for language in ("zh", "en"):
         assert required <= set(dictionaries[language])
+
+
+def test_settings_page_keys_exist_in_both_languages():
+    dictionaries = load_dictionaries()
+    required = {
+        "nav.settings", "settings.title", "settings.model", "settings.language",
+        "settings.temperature", "settings.contextLength", "settings.download",
+        "settings.downloading", "settings.save", "settings.saved",
+    }
+    for language in ("zh", "en"):
+        assert required <= set(dictionaries[language])

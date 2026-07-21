@@ -24,6 +24,17 @@ export const api = {
   health: () => request("/api/health"),
   explainHealth: () => request("/api/health/explain", {method: "POST"}),
   ollamaStatus: () => request("/api/ollama/status"),
+  settings: () => request("/api/settings"),
+  saveSettings: settings => request("/api/settings", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(settings),
+  }),
+  ollamaModels: () => request("/api/ollama/models"),
+  pullModel: model => request("/api/ollama/pull", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({model}),
+  }),
+  pullStatus: () => request("/api/ollama/pull/status"),
   chat: messages => request("/api/chat", {
     method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({messages}),

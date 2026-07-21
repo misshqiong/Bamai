@@ -25,6 +25,7 @@ class ChatController {
       if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); this.submit(); }
     });
     window.addEventListener("languagechange", () => this.refreshLanguage());
+    window.addEventListener("settingschanged", () => this.checkStatus());
     this.checkStatus();
   }
 

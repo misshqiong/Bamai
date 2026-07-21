@@ -8,10 +8,11 @@ import os
 from contextlib import asynccontextmanager
 from typing import Literal
 
+import httpx
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from . import config
 from .agent.ollama_client import (
@@ -26,8 +27,10 @@ from .agent.tools import ToolExecutor
 from .collector import Collector, list_processes
 from .db import Database, METRIC_COLUMNS
 from .localization import LanguageState
+from .model_pull import ModelPullManager, RECOMMENDED_MODELS
 from .rules import HealthEvaluator, RuleEngine
 from .search.files import find_large_files, mdfind_search
+from .settings import SettingsError, SettingsStore
 
 
 logging.basicConfig(
@@ -46,11 +49,27 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(min_length=1, max_length=50)
 
 
+class SettingsPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model: str | None = Field(default=None, min_length=1, max_length=200)
+    temperature: float | None = Field(default=None, ge=0, le=1)
+    num_ctx: int | None = Field(default=None, ge=512, le=131_072)
+    language: Literal["zh", "en"] | None = None
+    max_tool_rounds: int | None = Field(default=None, ge=1, le=20)
+
+
+class PullRequest(BaseModel):
+    model: str = Field(min_length=1, max_length=200)
+
+
 def create_app(
     database: Database | None = None,
     *,
     collector_enabled: bool | None = None,
     agent_client: OllamaClient | None = None,
+    settings_store: SettingsStore | None = None,
+    pull_manager: ModelPullManager | None = None,
 ) -> FastAPI:
     if collector_enabled is None:
         collector_enabled = os.environ.get("BAMAI_DISABLE_COLLECTOR") != "1"
@@ -61,7 +80,10 @@ def create_app(
             config.migrate_legacy_data_dir()
             application.state.db = Database()
         if application.state.agent is None:
-            application.state.agent = OllamaClient(ToolExecutor(application.state.db))
+            application.state.agent = OllamaClient(
+                ToolExecutor(application.state.db),
+                settings_store=application.state.settings,
+            )
         if collector_enabled:
             diagnoser = EventDiagnoser(
                 application.state.db, application.state.agent,
@@ -87,7 +109,9 @@ def create_app(
     application.state.collector = None
     application.state.agent = agent_client
     application.state.diagnoser = None
-    application.state.language = LanguageState("zh")
+    application.state.settings = settings_store or SettingsStore()
+    application.state.pull_manager = pull_manager or ModelPullManager()
+    application.state.language = LanguageState(application.state.settings.read()["language"])
 
     @application.middleware("http")
     async def remember_interface_language(request: Request, call_next):
@@ -107,7 +131,9 @@ def create_app(
     def active_agent() -> OllamaClient:
         client = application.state.agent
         if client is None:
-            client = OllamaClient(ToolExecutor(active_db()))
+            client = OllamaClient(
+                ToolExecutor(active_db()), settings_store=application.state.settings
+            )
             application.state.agent = client
         return client
 
@@ -176,6 +202,46 @@ def create_app(
     async def ollama_status() -> dict:
         return await active_agent().status()
 
+    @application.get("/api/settings")
+    def get_settings() -> dict:
+        return application.state.settings.read()
+
+    @application.post("/api/settings")
+    async def update_settings(payload: SettingsPatch) -> dict:
+        changes = payload.model_dump(exclude_none=True)
+        requested_model = changes.get("model")
+        if requested_model is not None:
+            try:
+                installed = {item["name"] for item in await active_agent().list_models()}
+            except (httpx.HTTPError, OllamaError) as exc:
+                raise HTTPException(status_code=503, detail="无法连接 Ollama 以验证模型") from exc
+            if requested_model not in installed:
+                raise HTTPException(status_code=422, detail="model 仅可选择已安装的 Ollama 模型")
+        try:
+            settings = application.state.settings.update(changes)
+        except SettingsError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        application.state.language.set(settings["language"])
+        return settings
+
+    @application.get("/api/ollama/models")
+    async def ollama_models() -> dict:
+        try:
+            installed = await active_agent().list_models()
+        except (httpx.HTTPError, OllamaError) as exc:
+            raise HTTPException(status_code=503, detail="Ollama 未就绪") from exc
+        return {"installed": installed, "recommended": RECOMMENDED_MODELS}
+
+    @application.post("/api/ollama/pull", status_code=202)
+    def pull_model(payload: PullRequest) -> dict:
+        if not application.state.pull_manager.start(payload.model):
+            raise HTTPException(status_code=409, detail="已有模型正在下载")
+        return application.state.pull_manager.status()
+
+    @application.get("/api/ollama/pull/status")
+    def pull_status() -> dict:
+        return application.state.pull_manager.status()
+
     @application.post("/api/chat")
     async def chat(payload: ChatRequest, request: Request) -> dict:
         client = active_agent()
@@ -183,7 +249,7 @@ def create_app(
         if not status["available"] or not status["model_pulled"]:
             raise HTTPException(
                 status_code=503,
-                detail=f"Ollama 或模型 {config.OLLAMA_MODEL} 未就绪。请运行：{INSTALL_GUIDE}",
+                detail=f"Ollama 或模型 {status['model']} 未就绪。请运行：{INSTALL_GUIDE}",
             )
         messages = [message.model_dump() for message in payload.messages]
         language = application.state.language.get()
@@ -213,7 +279,7 @@ def create_app(
         if not status["available"] or not status["model_pulled"]:
             raise HTTPException(
                 status_code=503,
-                detail=f"Ollama 或模型 {config.OLLAMA_MODEL} 未就绪。请运行：{INSTALL_GUIDE}",
+                detail=f"Ollama 或模型 {status['model']} 未就绪。请运行：{INSTALL_GUIDE}",
             )
         language = application.state.language.get()
         current_health = HealthEvaluator(active_db()).evaluate()

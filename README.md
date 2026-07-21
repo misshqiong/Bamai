@@ -13,6 +13,7 @@ Bamai（把脉）是面向 macOS Apple Silicon 的本地系统监控助手。*Ta
 - 基于真实工具数据的本地 AI 问答
 - CPU、内存、磁盘和网络异常的后台 AI 诊断
 - Ollama 不可用时自动降级，监控和搜索功能继续工作
+- 运行时切换本地模型、语言、温度和上下文长度，无需重启
 
 ## 环境要求
 
@@ -32,16 +33,33 @@ brew install ollama && ollama pull qwen3:4b
 
 ```bash
 cd /Users/heqiong/Documents/code/ai_local
-./run.sh
+./bamai start
 ```
 
-脚本会创建 `.venv`、安装依赖、首次下载本地 ECharts，然后启动：
+CLI 会创建 `.venv`、安装依赖、首次下载本地 ECharts，然后在后台启动：
 
 ```text
 http://127.0.0.1:8737
 ```
 
 服务只监听 `127.0.0.1`。SQLite 数据库默认位于 `~/.bamai/data.db`；可用 `BAMAI_DATA_DIR` / `BAMAI_DB_PATH` 覆盖数据位置，用 `BAMAI_OLLAMA_URL` 覆盖 Ollama 地址。首次启动时若只有 `~/.macpilot`，会把内容复制到 `~/.bamai` 并保留旧目录作为备份。
+
+常用 CLI 命令：
+
+```bash
+./bamai status
+./bamai logs
+./bamai restart
+./bamai stop
+./bamai start --foreground
+./bamai start --with-ai
+./bamai model list
+./bamai model use qwen3:8b
+./bamai model pull qwen3:8b
+./bamai autostart on
+```
+
+`run.sh` 保留为兼容入口，等同于 `./bamai start --foreground`。PID、服务日志和运行时设置分别位于 `~/.bamai/bamai.pid`、`~/.bamai/bamai.log` 和 `~/.bamai/config.json`。
 
 ## 使用 AI 助手
 
@@ -65,6 +83,9 @@ Agent 最多进行 6 轮工具调用，所有回答必须依据本机工具返�
 - `POST /api/health/explain`：按需生成当前健康的小白 AI 解读
 - `GET /api/search/files`、`GET /api/search/large-files`：文件搜索
 - `GET /api/ollama/status`：Ollama 与模型状态
+- `GET/POST /api/settings`：读取或即时更新运行时设置
+- `GET /api/ollama/models`：已安装与推荐模型
+- `POST /api/ollama/pull`、`GET /api/ollama/pull/status`：后台下载模型与查询进度
 - `POST /api/chat`：本地 Agent 对话
 - `WS /ws/realtime`：3 秒实时指标
 

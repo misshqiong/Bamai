@@ -7,6 +7,7 @@ import httpx
 
 from server.agent.ollama_client import ChatResult, EventDiagnoser, OllamaClient
 from server.agent.tools import ToolResult
+from server.settings import SettingsStore
 
 
 class FakeTools:
@@ -101,6 +102,27 @@ def test_ollama_status_uses_mocked_tags_endpoint():
     assert asyncio.run(scenario()) == {
         "available": True, "model_pulled": True, "model": "qwen3:4b"
     }
+
+
+def test_ollama_reads_runtime_settings_again_for_each_request(tmp_path):
+    payloads = []
+    store = SettingsStore(tmp_path / "config.json")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payloads.append(json.loads(request.content))
+        return httpx.Response(200, json={"message": {"content": "完成"}})
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+            client = OllamaClient(FakeTools(), settings_store=store, http_client=http_client)
+            await client.chat([{"role": "user", "content": "第一次"}])
+            store.update({"model": "qwen3:8b", "temperature": 0.1, "num_ctx": 16384})
+            await client.chat([{"role": "user", "content": "第二次"}])
+
+    asyncio.run(scenario())
+    assert payloads[0]["model"] == "qwen3:4b"
+    assert payloads[1]["model"] == "qwen3:8b"
+    assert payloads[1]["options"] == {"temperature": 0.1, "num_ctx": 16384}
 
 
 def test_event_diagnosis_updates_database_without_real_ollama(db):

@@ -14,6 +14,7 @@ import httpx
 
 from .. import config
 from ..db import Database
+from ..settings import SettingsStore
 from .prompts import build_event_diagnosis_prompt, build_system_prompt
 from .tools import TOOL_DEFINITIONS, ToolError, ToolExecutor
 
@@ -43,34 +44,56 @@ class OllamaClient:
         tools: ToolExecutor,
         *,
         base_url: str = config.OLLAMA_BASE_URL,
-        model: str = config.OLLAMA_MODEL,
+        model: str | None = None,
+        settings_store: SettingsStore | None = None,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self.tools = tools
         self.base_url = base_url.rstrip("/")
-        self.model = model
+        self._model_override = model
+        self.settings_store = settings_store or SettingsStore()
         self.http_client = http_client
 
+    def current_settings(self) -> dict[str, Any]:
+        """Read from disk on every use so changes need no process restart."""
+        settings = self.settings_store.read()
+        if self._model_override is not None:
+            settings["model"] = self._model_override
+        return settings
+
+    @property
+    def model(self) -> str:
+        return str(self.current_settings()["model"])
+
+    async def list_models(self) -> list[dict[str, Any]]:
+        response = await self._request(
+            "GET", "/api/tags", timeout=config.OLLAMA_HEALTH_TIMEOUT_SECONDS
+        )
+        payload = response.json()
+        models = payload.get("models") if isinstance(payload, dict) else None
+        if not isinstance(models, list):
+            raise OllamaError("Ollama tags 响应格式无效")
+        result = []
+        for item in models:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name") or item.get("model")
+            if isinstance(name, str) and name:
+                result.append({"name": name, "size": int(item.get("size") or 0)})
+        return result
+
     async def status(self) -> dict[str, Any]:
+        model = self.model
         try:
-            response = await self._request(
-                "GET", "/api/tags", timeout=config.OLLAMA_HEALTH_TIMEOUT_SECONDS
-            )
-            payload = response.json()
-            if not isinstance(payload, dict) or not isinstance(payload.get("models", []), list):
-                raise ValueError("Ollama tags 响应格式无效")
-            models = payload.get("models", [])
-            names = {
-                item.get("name") or item.get("model")
-                for item in models if isinstance(item, dict)
-            }
+            models = await self.list_models()
+            names = {item["name"] for item in models}
             return {
                 "available": True,
-                "model_pulled": self.model in names,
-                "model": self.model,
+                "model_pulled": model in names,
+                "model": model,
             }
-        except (httpx.HTTPError, ValueError, TypeError):
-            return {"available": False, "model_pulled": False, "model": self.model}
+        except (httpx.HTTPError, OllamaError, ValueError, TypeError):
+            return {"available": False, "model_pulled": False, "model": model}
 
     async def chat(
         self, messages: Sequence[Mapping[str, Any]], language: str = "zh"
@@ -79,7 +102,9 @@ class OllamaClient:
         conversation.extend(self._clean_messages(messages))
         trace: list[dict[str, Any]] = []
 
-        for _ in range(config.OLLAMA_MAX_TOOL_ROUNDS):
+        rounds = 0
+        while rounds < int(self.current_settings()["max_tool_rounds"]):
+            rounds += 1
             message = await self._chat_request(conversation, tools=TOOL_DEFINITIONS)
             tool_calls = message.get("tool_calls") or []
             if not tool_calls:
@@ -105,17 +130,18 @@ class OllamaClient:
 
         conversation.append({
             "role": "system",
-            "content": "工具调用已达到 6 轮上限。请停止调用工具，基于已有结果直接回答；数据不足时明确说明。",
+            "content": f"工具调用已达到 {rounds} 轮上限。请停止调用工具，基于已有结果直接回答；数据不足时明确说明。",
         })
         final_message = await self._chat_request(conversation, tools=None)
         return ChatResult(self._reply_content(final_message), trace)
 
     async def _chat_request(self, messages: list[dict], tools: list[dict] | None) -> dict:
+        settings = self.current_settings()
         payload: dict[str, Any] = {
-            "model": self.model, "messages": messages, "stream": False, "think": False,
+            "model": settings["model"], "messages": messages, "stream": False, "think": False,
             "options": {
-                "temperature": config.OLLAMA_TEMPERATURE,
-                "num_ctx": config.OLLAMA_CONTEXT_SIZE,
+                "temperature": settings["temperature"],
+                "num_ctx": settings["num_ctx"],
             },
         }
         if tools is not None:
