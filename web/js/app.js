@@ -35,12 +35,19 @@ function updateCards(metric, disks = null) {
   }
 }
 
+let wsConnected = false;
+
+function renderConnectionState() {
+  byId("ws-dot").className = `status-dot ${wsConnected ? "online" : "offline"}`;
+  setText("ws-status", t(wsConnected ? "connection.online" : "connection.offline"));
+}
+
 function connectRealtime() {
   const protocol = location.protocol === "https:" ? "wss" : "ws";
   const socket = new WebSocket(`${protocol}://${location.host}/ws/realtime`);
   socket.addEventListener("open", () => {
-    byId("ws-dot").className = "status-dot online";
-    setText("ws-status", t("connection.online"));
+    wsConnected = true;
+    renderConnectionState();
   });
   socket.addEventListener("message", event => {
     const metric = JSON.parse(event.data);
@@ -48,8 +55,8 @@ function connectRealtime() {
     realtimeCharts.push(metric);
   });
   socket.addEventListener("close", () => {
-    byId("ws-dot").className = "status-dot offline";
-    setText("ws-status", t("connection.offline"));
+    wsConnected = false;
+    renderConnectionState();
     setTimeout(connectRealtime, 2000);
   });
 }
@@ -233,6 +240,7 @@ function bindControls() {
   });
   window.addEventListener("languagechange", () => {
     healthExplanation = null;
+    renderConnectionState();
     realtimeCharts.translate();
     if (latestMetric) updateCards(latestMetric, latestDisks);
     loadHistory(); loadProcesses(); loadEvents(); loadHealth();
