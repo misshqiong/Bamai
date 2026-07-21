@@ -1,3 +1,5 @@
+import {getLanguage} from "./i18n.js";
+
 export class ApiError extends Error {
   constructor(message, status) { super(message); this.name = "ApiError"; this.status = status; }
 }
@@ -5,7 +7,7 @@ export class ApiError extends Error {
 async function request(path, options = {}) {
   const response = await fetch(path, {
     ...options,
-    headers: {Accept: "application/json", ...(options.headers || {})},
+    headers: {Accept: "application/json", "Accept-Language": getLanguage(), ...(options.headers || {})},
   });
   let body;
   try { body = await response.json(); } catch { body = null; }
@@ -19,6 +21,8 @@ export const api = {
   processes: (sort, limit = 20) => request(`/api/processes?${new URLSearchParams({sort, limit})}`),
   processNet: () => request("/api/processes/net"),
   events: (limit = 50) => request(`/api/events?limit=${limit}`),
+  health: () => request("/api/health"),
+  explainHealth: () => request("/api/health/explain", {method: "POST"}),
   ollamaStatus: () => request("/api/ollama/status"),
   chat: messages => request("/api/chat", {
     method: "POST", headers: {"Content-Type": "application/json"},

@@ -1,3 +1,5 @@
+import {formatNumber, t} from "./i18n.js";
+
 const palette = {cyan: "#38d7ff", green: "#42e59e", violet: "#9b8cff", amber: "#ffc857"};
 const axis = {axisLine: {lineStyle: {color: "#263241"}}, axisLabel: {color: "#748397", fontSize: 9}, splitLine: {lineStyle: {color: "#1d2632"}}};
 
@@ -23,10 +25,10 @@ export class RealtimeCharts {
     this.disk = echarts.init(document.querySelector("#disk-io-chart"));
     this.core = echarts.init(document.querySelector("#core-chart"));
     this.points = [];
-    this.cpuMemory.setOption(baseOption([line("CPU %", palette.cyan), line("内存 %", palette.violet)], value => `${Number(value).toFixed(1)}%`, value => `${value}%`));
-    this.network.setOption(baseOption([line("上传", palette.green), line("下载", palette.cyan)], formatRate, formatBytes));
-    this.disk.setOption(baseOption([line("读取", palette.amber), line("写入", palette.violet)], formatRate, formatBytes));
-    this.core.setOption(baseOption([], value => `${Number(value).toFixed(1)}%`, value => `${value}%`));
+    this.cpuMemory.setOption(baseOption([line(t("chart.cpu"), palette.cyan), line(t("chart.memory"), palette.violet)], value => `${formatNumber(value, {maximumFractionDigits: 1})}%`, value => `${formatNumber(value)}%`));
+    this.network.setOption(baseOption([line(t("chart.upload"), palette.green), line(t("chart.download"), palette.cyan)], formatRate, formatBytes));
+    this.disk.setOption(baseOption([line(t("chart.read"), palette.amber), line(t("chart.write"), palette.violet)], formatRate, formatBytes));
+    this.core.setOption(baseOption([], value => `${formatNumber(value, {maximumFractionDigits: 1})}%`, value => `${formatNumber(value)}%`));
     addEventListener("resize", () => this.resize());
   }
   push(metric) {
@@ -39,10 +41,16 @@ export class RealtimeCharts {
     this.disk.setOption({series: [{data: values("disk_read_bps")}, {data: values("disk_write_bps")}]});
     const count = metric.cpu_per_core?.length || 0;
     // notMerge 全量替换时必须带上完整 option，否则坐标轴配置会被清空导致 ECharts 抛错
-    const coreSeries = Array.from({length: count}, (_, index) => ({...line(`核心 ${index + 1}`, [palette.cyan, palette.green, palette.violet, palette.amber][index % 4]), data: this.points.map(item => [item.ts * 1000, item.cpu_per_core?.[index] || 0])}));
-    this.core.setOption(baseOption(coreSeries, value => `${Number(value).toFixed(1)}%`, value => `${value}%`), true);
+    const coreSeries = Array.from({length: count}, (_, index) => ({...line(t("chart.core", {number: formatNumber(index + 1)}), [palette.cyan, palette.green, palette.violet, palette.amber][index % 4]), data: this.points.map(item => [item.ts * 1000, item.cpu_per_core?.[index] || 0])}));
+    this.core.setOption(baseOption(coreSeries, value => `${formatNumber(value, {maximumFractionDigits: 1})}%`, value => `${formatNumber(value)}%`), true);
   }
   resize() { this.cpuMemory.resize(); this.network.resize(); this.disk.resize(); this.core.resize(); }
+  translate() {
+    this.cpuMemory.setOption({series: [{name: t("chart.cpu")}, {name: t("chart.memory")}]});
+    this.network.setOption({series: [{name: t("chart.upload")}, {name: t("chart.download")}]});
+    this.disk.setOption({series: [{name: t("chart.read")}, {name: t("chart.write")}]});
+    if (this.points.length) this.push({...this.points.pop()});
+  }
 }
 
 export class HistoryChart {
@@ -53,9 +61,9 @@ export class HistoryChart {
   set(metric, points) {
     const rates = metric.includes("bps");
     this.chart.setOption(baseOption([
-      {...line("平均", palette.cyan), data: points.map(point => [point.ts * 1000, point.avg])},
-      {...line("峰值", palette.amber), areaStyle: undefined, lineStyle: {width: 1, type: "dashed", color: palette.amber}, data: points.map(point => [point.ts * 1000, point.max])},
-    ], rates ? formatRate : value => Number(value).toFixed(1), rates ? formatBytes : null), true);
+      {...line(t("chart.average"), palette.cyan), data: points.map(point => [point.ts * 1000, point.avg])},
+      {...line(t("chart.peak"), palette.amber), areaStyle: undefined, lineStyle: {width: 1, type: "dashed", color: palette.amber}, data: points.map(point => [point.ts * 1000, point.max])},
+    ], rates ? formatRate : value => formatNumber(value, {maximumFractionDigits: 1}), rates ? formatBytes : null), true);
   }
 }
 
@@ -64,7 +72,6 @@ export function formatBytes(value) {
   const units = ["B", "KB", "MB", "GB", "TB"];
   let number = Number(value), index = 0;
   while (number >= 1024 && index < units.length - 1) { number /= 1024; index++; }
-  return `${number >= 100 ? number.toFixed(0) : number.toFixed(1)} ${units[index]}`;
+  return `${formatNumber(number, {maximumFractionDigits: number >= 100 ? 0 : 1})} ${units[index]}`;
 }
 export function formatRate(value) { return `${formatBytes(value)}/s`; }
-

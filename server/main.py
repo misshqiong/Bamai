@@ -1,4 +1,4 @@
-"""MacPilot FastAPI 应用、REST/WS 路由与静态文件服务。"""
+"""Bamai FastAPI 应用、REST/WS 路由与静态文件服务。"""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import os
 from contextlib import asynccontextmanager
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -21,10 +21,12 @@ from .agent.ollama_client import (
     OllamaError,
     OllamaUnavailable,
 )
+from .agent.prompts import build_health_explanation_prompt
 from .agent.tools import ToolExecutor
 from .collector import Collector, list_processes
 from .db import Database, METRIC_COLUMNS
-from .rules import RuleEngine
+from .localization import LanguageState
+from .rules import HealthEvaluator, RuleEngine
 from .search.files import find_large_files, mdfind_search
 
 
@@ -51,22 +53,29 @@ def create_app(
     agent_client: OllamaClient | None = None,
 ) -> FastAPI:
     if collector_enabled is None:
-        collector_enabled = os.environ.get("MACPILOT_DISABLE_COLLECTOR") != "1"
+        collector_enabled = os.environ.get("BAMAI_DISABLE_COLLECTOR") != "1"
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         if application.state.db is None:
+            config.migrate_legacy_data_dir()
             application.state.db = Database()
         if application.state.agent is None:
             application.state.agent = OllamaClient(ToolExecutor(application.state.db))
         if collector_enabled:
-            diagnoser = EventDiagnoser(application.state.db, application.state.agent)
+            diagnoser = EventDiagnoser(
+                application.state.db, application.state.agent,
+                language_provider=application.state.language.get,
+            )
             application.state.diagnoser = diagnoser
-            rules = RuleEngine(application.state.db, diagnoser=diagnoser.schedule)
+            rules = RuleEngine(
+                application.state.db, diagnoser=diagnoser.schedule,
+                language_provider=application.state.language.get,
+            )
             collector = Collector(application.state.db, rules)
             application.state.collector = collector
             collector.start()
-        logger.info("MacPilot 已启动: http://%s:%s", config.HOST, config.PORT)
+        logger.info("Bamai 已启动: http://%s:%s", config.HOST, config.PORT)
         yield
         if application.state.collector is not None:
             application.state.collector.stop()
@@ -78,6 +87,14 @@ def create_app(
     application.state.collector = None
     application.state.agent = agent_client
     application.state.diagnoser = None
+    application.state.language = LanguageState("zh")
+
+    @application.middleware("http")
+    async def remember_interface_language(request: Request, call_next):
+        requested = request.headers.get("accept-language")
+        if requested:
+            application.state.language.set(requested)
+        return await call_next(request)
 
     def active_db() -> Database:
         db = application.state.db
@@ -160,7 +177,7 @@ def create_app(
         return await active_agent().status()
 
     @application.post("/api/chat")
-    async def chat(payload: ChatRequest) -> dict:
+    async def chat(payload: ChatRequest, request: Request) -> dict:
         client = active_agent()
         status = await client.status()
         if not status["available"] or not status["model_pulled"]:
@@ -169,9 +186,11 @@ def create_app(
                 detail=f"Ollama 或模型 {config.OLLAMA_MODEL} 未就绪。请运行：{INSTALL_GUIDE}",
             )
         messages = [message.model_dump() for message in payload.messages]
+        language = application.state.language.get()
         try:
             result = await asyncio.wait_for(
-                client.chat(messages), timeout=config.OLLAMA_CHAT_TIMEOUT_SECONDS
+                client.chat(messages, language=language),
+                timeout=config.OLLAMA_CHAT_TIMEOUT_SECONDS,
             )
         except OllamaUnavailable as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -182,6 +201,35 @@ def create_app(
         except OllamaError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         return {"reply": result.reply, "tool_trace": result.tool_trace}
+
+    @application.get("/api/health")
+    def health() -> dict:
+        return HealthEvaluator(active_db()).evaluate()
+
+    @application.post("/api/health/explain")
+    async def explain_health(request: Request) -> dict:
+        client = active_agent()
+        status = await client.status()
+        if not status["available"] or not status["model_pulled"]:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Ollama 或模型 {config.OLLAMA_MODEL} 未就绪。请运行：{INSTALL_GUIDE}",
+            )
+        language = application.state.language.get()
+        current_health = HealthEvaluator(active_db()).evaluate()
+        prompt = build_health_explanation_prompt(current_health, language)
+        try:
+            result = await asyncio.wait_for(
+                client.chat([{"role": "user", "content": prompt}], language=language),
+                timeout=config.HEALTH_EXPLAIN_TIMEOUT_SECONDS,
+            )
+        except OllamaUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except TimeoutError as exc:
+            raise HTTPException(status_code=504, detail="AI health explanation timed out") from exc
+        except OllamaError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return {"reply": result.reply}
 
     @application.get("/api/search/files")
     def search_files(

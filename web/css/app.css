@@ -20,6 +20,9 @@ button { color: inherit; }
 .app-shell { min-height: 100vh; display: flex; }
 .main-area { flex: 1; min-width: 0; padding: 28px 32px 48px; margin-right: 360px; transition: margin .25s ease; }
 .app-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; }
+.app-header h1 small { color: var(--muted); font-size: 13px; font-weight: 500; letter-spacing: 0; }
+.header-actions { display: flex; align-items: center; gap: 14px; }
+.language-toggle { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 7px 9px; cursor: pointer; font-size: 11px; }
 h1, h2, h3, p { margin-top: 0; }
 h1 { font-size: 31px; letter-spacing: -.04em; margin-bottom: 0; }
 h2 { font-size: 19px; margin-bottom: 0; }
@@ -34,6 +37,15 @@ h3 { font-size: 13px; color: #b7c3d1; font-weight: 600; margin: 0 0 8px; }
 .tab.active { color: var(--text); border-color: var(--cyan); }
 .view { display: none; }
 .view.active { display: block; }
+.health-banner { display: flex; align-items: flex-start; gap: 15px; border: 1px solid #27553e; border-radius: 14px; padding: 17px 18px; margin-bottom: 16px; background: linear-gradient(135deg, rgba(32,113,76,.28), rgba(15,45,35,.62)); }
+.health-banner.warn { border-color: #6f5727; background: linear-gradient(135deg, rgba(134,94,22,.3), rgba(55,40,16,.65)); }
+.health-banner.critical { border-color: #763541; background: linear-gradient(135deg, rgba(143,43,59,.33), rgba(61,19,28,.68)); }
+.health-icon { flex: 0 0 auto; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 99px; background: var(--green); color: #062317; font-weight: 900; }
+.health-banner.warn .health-icon { background: var(--amber); color: #352404; }.health-banner.critical .health-icon { background: var(--danger); color: #340711; }
+.health-content { flex: 1; min-width: 0; }.health-content h2 { margin: 1px 0 5px; }.health-content > p { color: #b6c5bc; font-size: 12px; margin-bottom: 0; }
+.health-checks { list-style: none; padding: 0; margin: 10px 0 0; }.health-checks li { border-top: 1px solid rgba(255,255,255,.1); padding: 9px 0 0; margin-top: 9px; }.health-checks strong { display: block; font-size: 12px; }.health-checks span { color: #c1c8c4; font-size: 11px; }
+.health-ai { border-top: 1px solid rgba(255,255,255,.12); margin-top: 11px; padding-top: 10px; }.health-ai strong { color: var(--cyan); font-size: 10px; letter-spacing: .08em; }.health-ai p { margin: 5px 0 0; font-size: 12px; line-height: 1.55; }
+.health-explain { flex: 0 0 auto; border: 1px solid rgba(255,255,255,.22); border-radius: 8px; background: rgba(8,12,16,.32); padding: 8px 11px; cursor: pointer; font-size: 11px; }.health-explain:disabled { cursor: not-allowed; opacity: .45; }
 .status-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
 .status-card, .panel { border: 1px solid var(--border); background: linear-gradient(145deg, rgba(21,28,38,.94), rgba(13,18,25,.97)); border-radius: 14px; }
 .status-card { min-height: 126px; padding: 18px; position: relative; overflow: hidden; }
@@ -99,4 +111,4 @@ td:last-child, th:last-child { text-align: right; }
 @keyframes pulse { 50% { opacity: .45; } }
 body.chat-collapsed .chat-panel { transform: translateX(100%); } body.chat-collapsed .main-area { margin-right: 0; } body.chat-collapsed .chat-toggle { transform: rotate(180deg); }
 @media (max-width: 1180px) { .main-area { margin-right: 0; }.chat-panel { transform: translateX(100%); }.chat-toggle { transform: rotate(180deg); }.chat-panel.open { transform: none; }.chat-panel.open .chat-toggle { transform: none; } }
-@media (max-width: 800px) { .main-area { padding: 20px 14px 36px; }.status-grid { grid-template-columns: repeat(2, 1fr); }.chart-grid, .lower-grid { grid-template-columns: 1fr; }.history-controls, .search-form { align-items: stretch; flex-direction: column; }.control-row { justify-content: space-between; }.chat-panel { width: min(360px, 94vw); }.status-card strong { font-size: 25px; } }
+@media (max-width: 800px) { .main-area { padding: 20px 14px 36px; }.app-header { align-items: flex-start; }.header-actions { flex-direction: column; align-items: flex-end; gap: 8px; }.health-banner { flex-wrap: wrap; }.health-explain { margin-left: 49px; }.status-grid { grid-template-columns: repeat(2, 1fr); }.chart-grid, .lower-grid { grid-template-columns: 1fr; }.history-controls, .search-form { align-items: stretch; flex-direction: column; }.control-row { justify-content: space-between; }.chat-panel { width: min(360px, 94vw); }.status-card strong { font-size: 25px; } }

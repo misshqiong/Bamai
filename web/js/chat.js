@@ -1,4 +1,5 @@
 import {api} from "./api.js";
+import {t} from "./i18n.js";
 
 const INSTALL_COMMAND = "brew install ollama && ollama pull qwen3:4b";
 
@@ -14,6 +15,7 @@ class ChatController {
     this.input = document.getElementById("chat-text");
     this.send = document.getElementById("chat-send");
     this.retry = document.getElementById("ollama-retry");
+    this.welcome = null;
   }
 
   init() {
@@ -22,12 +24,13 @@ class ChatController {
     this.input.addEventListener("keydown", event => {
       if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); this.submit(); }
     });
+    window.addEventListener("languagechange", () => this.refreshLanguage());
     this.checkStatus();
   }
 
   async checkStatus() {
     this.retry.disabled = true;
-    this.state.textContent = "检测中";
+    this.state.textContent = t("chat.checking");
     this.state.className = "ollama-state";
     try {
       const status = await api.ollamaStatus();
@@ -43,12 +46,12 @@ class ChatController {
     this.ready = ready;
     this.guide.classList.toggle("hidden", ready);
     this.list.classList.toggle("hidden", !ready);
-    this.state.textContent = ready ? "qwen3:4b 就绪" : "未就绪";
+    this.state.textContent = ready ? t("chat.ready") : t("chat.offline");
     this.state.className = `ollama-state ${ready ? "ready" : "offline"}`;
     this.input.disabled = !ready || this.busy;
     this.send.disabled = !ready || this.busy;
     if (ready && this.list.childElementCount === 0) {
-      this.addBubble("assistant", "你好，我是 MacPilot。你可以问我当前资源占用、历史趋势、异常事件或本机文件。", []);
+      this.welcome = this.addBubble("assistant", t("chat.greeting"), []);
     }
   }
 
@@ -67,7 +70,7 @@ class ChatController {
       this.addBubble("assistant", response.reply, response.tool_trace || []);
     } catch (error) {
       pending.remove();
-      this.addBubble("assistant", `暂时无法回答：${error.message}`, []);
+      this.addBubble("assistant", t("chat.unavailable", {message: error.message}), []);
       if (error.status === 503) this.setReady(false);
     } finally {
       this.setBusy(false);
@@ -79,7 +82,7 @@ class ChatController {
     this.busy = busy;
     this.input.disabled = busy || !this.ready;
     this.send.disabled = busy || !this.ready;
-    this.send.textContent = busy ? "思考中" : "发送";
+    this.send.textContent = busy ? t("chat.thinking") : t("chat.send");
   }
 
   addBubble(role, content, trace) {
@@ -93,7 +96,7 @@ class ChatController {
       const details = document.createElement("details");
       details.className = "tool-trace";
       const summary = document.createElement("summary");
-      summary.textContent = `🔧 查看 ${trace.length} 项查询过程`;
+      summary.textContent = t("chat.trace", {count: trace.length});
       details.append(summary);
       for (const entry of trace) {
         const line = document.createElement("p");
@@ -110,13 +113,19 @@ class ChatController {
   addPending() {
     const item = document.createElement("article");
     item.className = "chat-message assistant pending";
-    item.textContent = "正在分析本机数据…";
+    item.textContent = t("chat.analyzing");
     this.list.append(item);
     this.scrollBottom();
     return item;
   }
 
   scrollBottom() { this.list.scrollTop = this.list.scrollHeight; }
+
+  refreshLanguage() {
+    this.state.textContent = this.ready ? t("chat.ready") : t("chat.offline");
+    this.send.textContent = this.busy ? t("chat.thinking") : t("chat.send");
+    if (this.welcome) this.welcome.querySelector(".chat-bubble").textContent = t("chat.greeting");
+  }
 }
 
 export function initChat() {

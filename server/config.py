@@ -1,19 +1,26 @@
-"""MacPilot 的集中配置。"""
+"""Bamai 的集中配置与旧数据迁移。"""
 
 from __future__ import annotations
 
 import os
+import logging
+import shutil
+import tempfile
 from pathlib import Path
 
 
-APP_NAME = "MacPilot"
+logger = logging.getLogger(__name__)
+
+APP_NAME = "Bamai"
+APP_NAME_ZH = "把脉"
 HOST = "127.0.0.1"
 PORT = 8737
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = PROJECT_ROOT / "web"
-DATA_DIR = Path(os.environ.get("MACPILOT_DATA_DIR", "~/.macpilot")).expanduser()
-DB_PATH = Path(os.environ.get("MACPILOT_DB_PATH", DATA_DIR / "data.db")).expanduser()
+LEGACY_DATA_DIR = Path("~/.macpilot").expanduser()
+DATA_DIR = Path(os.environ.get("BAMAI_DATA_DIR", "~/.bamai")).expanduser()
+DB_PATH = Path(os.environ.get("BAMAI_DB_PATH", DATA_DIR / "data.db")).expanduser()
 
 SAMPLE_INTERVAL_SECONDS = 3
 SLOW_SAMPLE_TICKS = 20
@@ -47,10 +54,35 @@ MAX_CHART_POINTS = 500
 
 DEFAULT_DISK_MOUNTS = ("/", "/System/Volumes/Data")
 
-OLLAMA_BASE_URL = os.environ.get("MACPILOT_OLLAMA_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_BASE_URL = os.environ.get("BAMAI_OLLAMA_URL", "http://localhost:11434").rstrip("/")
 OLLAMA_MODEL = "qwen3:4b"
 OLLAMA_CHAT_TIMEOUT_SECONDS = 120
 OLLAMA_HEALTH_TIMEOUT_SECONDS = 3
 OLLAMA_MAX_TOOL_ROUNDS = 6
 OLLAMA_TEMPERATURE = 0.7
 OLLAMA_CONTEXT_SIZE = 8192
+HEALTH_EXPLAIN_TIMEOUT_SECONDS = 30
+
+
+def migrate_legacy_data_dir(
+    old_dir: str | Path = LEGACY_DATA_DIR,
+    new_dir: str | Path = DATA_DIR,
+) -> bool:
+    """首次启动时复制旧数据目录；保留旧目录作为可恢复备份。"""
+    old_path = Path(old_dir).expanduser()
+    new_path = Path(new_dir).expanduser()
+    if not old_path.is_dir() or new_path.exists():
+        return False
+    new_path.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=".bamai-migrate-", dir=new_path.parent))
+    staged_data = staging / "data"
+    try:
+        shutil.copytree(old_path, staged_data, copy_function=shutil.copy2, symlinks=True)
+        staged_data.rename(new_path)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+    if not new_path.is_dir():
+        raise RuntimeError(f"Bamai 数据迁移后目录不可读: {new_path}")
+    logger.info("已将旧数据目录 %s 迁移到 %s；旧目录保留为备份", old_path, new_path)
+    return True

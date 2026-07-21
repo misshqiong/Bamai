@@ -1,0 +1,303 @@
+export const translations = /* i18n-dictionaries-start */ {
+  "zh": {
+    "app.documentTitle": "Bamai · 本地系统监控",
+    "app.tagline": "给你的 Mac 把把脉",
+    "app.subtitle": "把脉",
+    "connection.connecting": "正在连接",
+    "connection.online": "实时监控中",
+    "connection.offline": "连接中断，正在重连",
+    "language.toggleTitle": "切换语言",
+    "nav.dashboard": "仪表盘",
+    "nav.search": "文件搜索",
+    "cards.cpu": "CPU",
+    "cards.memory": "内存",
+    "cards.disk": "磁盘",
+    "cards.network": "网络",
+    "cards.loadPending": "负载 --",
+    "cards.collecting": "正在采集",
+    "cards.loadValue": "1 分钟负载 {value}",
+    "live.eyebrow": "实时 · 5 分钟",
+    "live.title": "实时曲线",
+    "live.cpuMemory": "CPU / 内存",
+    "live.network": "网络吞吐",
+    "live.diskIo": "磁盘读写",
+    "live.perCore": "每核 CPU",
+    "history.eyebrow": "历史",
+    "history.title": "历史趋势",
+    "history.metricLabel": "历史指标",
+    "history.cpu": "CPU",
+    "history.memory": "内存",
+    "history.netDown": "网络下载",
+    "history.netUp": "网络上传",
+    "history.diskRead": "磁盘读取",
+    "history.diskWrite": "磁盘写入",
+    "process.eyebrow": "进程",
+    "process.title": "资源进程",
+    "process.cpu": "CPU",
+    "process.memory": "内存",
+    "process.network": "网络",
+    "process.name": "进程",
+    "process.pid": "PID",
+    "process.throughput": "吞吐",
+    "process.empty": "暂无进程数据",
+    "events.eyebrow": "提醒",
+    "events.title": "异常事件",
+    "events.empty": "暂无异常事件",
+    "events.resolved": "已恢复",
+    "events.aiDiagnosis": "AI 分析",
+    "events.severity.warning": "需要留意",
+    "events.severity.critical": "需要尽快处理",
+    "events.severity.info": "提示",
+    "events.cpu_high.title": "CPU 持续繁忙",
+    "events.cpu_high.detail": "最近 3 分钟 CPU 平均使用 {percent}%。",
+    "events.mem_pressure.title": "可用内存不多了",
+    "events.mem_pressure.detail": "内存使用 {percent}%，10 分钟内临时借用的磁盘空间增加 {growth_gb} GB。",
+    "events.disk_full.title": "磁盘空间不多了",
+    "events.disk_full.detail": "磁盘 {mount} 已使用 {percent}%。",
+    "events.net_spike.title": "网络流量突然增多",
+    "events.net_spike.detail": "最近流量约 {recent_mbps} MB/s，平时约 {baseline_mbps} MB/s。",
+    "search.eyebrow": "聚焦搜索",
+    "search.title": "文件名与内容搜索",
+    "search.queryPlaceholder": "输入文件名或内容关键词",
+    "search.byName": "文件名",
+    "search.byContent": "文件内容",
+    "search.submit": "搜索",
+    "search.hint": "使用 macOS Spotlight 在本机查找文件",
+    "search.largeEyebrow": "存储扫描",
+    "search.largeTitle": "大文件扫描",
+    "search.pathPlaceholder": "扫描路径，例如 ~/Downloads",
+    "search.minimum": "至少",
+    "search.scan": "开始扫描",
+    "search.largeHint": "隐藏目录、.app 和 .framework 内部会自动跳过",
+    "search.searching": "正在搜索…",
+    "search.scanning": "正在扫描，最多等待 30 秒…",
+    "search.noResults": "没有找到结果",
+    "search.truncated": "扫描达到 30 秒上限，以下为已扫描结果",
+    "chat.toggleTitle": "折叠聊天栏",
+    "chat.eyebrow": "本地 AI",
+    "chat.title": "系统助手",
+    "chat.checking": "检测中",
+    "chat.ready": "qwen3:4b 就绪",
+    "chat.offline": "未就绪",
+    "chat.guideTitle": "Ollama 未就绪",
+    "chat.guideText": "安装 Ollama 并下载本地模型后即可对话。监控功能不受影响。",
+    "chat.retry": "重新检测",
+    "chat.placeholder": "询问当前系统状态…",
+    "chat.send": "发送",
+    "chat.thinking": "思考中",
+    "chat.greeting": "你好，我是 Bamai（把脉）。你可以问我当前资源占用、历史趋势、异常事件或本机文件。",
+    "chat.unavailable": "暂时无法回答：{message}",
+    "chat.trace": "🔧 查看 {count} 项查询过程",
+    "chat.analyzing": "正在分析本机数据…",
+    "chart.cpu": "CPU %",
+    "chart.memory": "内存 %",
+    "chart.upload": "上传",
+    "chart.download": "下载",
+    "chart.read": "读取",
+    "chart.write": "写入",
+    "chart.core": "核心 {number}",
+    "chart.average": "平均",
+    "chart.peak": "峰值",
+    "health.loadingHeadline": "正在给电脑做体检…",
+    "health.loadingAdvice": "结果马上就好。",
+    "health.ok.headline": "电脑目前状态良好",
+    "health.ok.advice": "可以放心继续使用。",
+    "health.warn.headline": "有几项需要留意",
+    "health.warn.advice": "按下面建议处理，通常不需要紧张。",
+    "health.critical.headline": "有一项需要尽快处理",
+    "health.critical.advice": "先按下面建议处理，避免影响正常使用。",
+    "health.cpu.headline": "电脑持续有点忙（{percent}%）",
+    "health.cpu.advice": "看看下方进程列表，先关闭不再使用的应用。",
+    "health.memory.headline": "同时打开的内容有点多（已使用 {percent}%）",
+    "health.memory.advice": "可以先退出暂时不用的应用；占用最多的是 {top_name}。",
+    "health.disk.headline": "磁盘空间快用完了（已使用 {percent}%）",
+    "health.disk.advice": "清理不需要的大文件，建议至少留出 {free_gb} GB。",
+    "health.network.headline": "网络流量突然变多（约 {mbps} MB/s）",
+    "health.network.advice": "检查是否正在下载、同步或备份；当前较活跃的是 {top_name}。",
+    "health.swap.headline": "电脑正在频繁借用磁盘空间，可能会变卡",
+    "health.swap.advice": "先关闭几个不使用的应用，再观察是否恢复顺畅。",
+    "health.aiLabel": "AI 分析",
+    "health.explain": "AI 解读",
+    "health.explaining": "AI 正在解读…"
+  },
+  "en": {
+    "app.documentTitle": "Bamai · Local System Monitor",
+    "app.tagline": "Take your Mac's pulse, locally.",
+    "app.subtitle": "Pulse",
+    "connection.connecting": "Connecting",
+    "connection.online": "Monitoring live",
+    "connection.offline": "Disconnected, reconnecting",
+    "language.toggleTitle": "Switch language",
+    "nav.dashboard": "Dashboard",
+    "nav.search": "File Search",
+    "cards.cpu": "CPU",
+    "cards.memory": "Memory",
+    "cards.disk": "Disk",
+    "cards.network": "Network",
+    "cards.loadPending": "Load --",
+    "cards.collecting": "Collecting",
+    "cards.loadValue": "1-minute load {value}",
+    "live.eyebrow": "LIVE · 5 MIN",
+    "live.title": "Live Trends",
+    "live.cpuMemory": "CPU / Memory",
+    "live.network": "Network Traffic",
+    "live.diskIo": "Disk Activity",
+    "live.perCore": "CPU by Core",
+    "history.eyebrow": "HISTORY",
+    "history.title": "History",
+    "history.metricLabel": "History metric",
+    "history.cpu": "CPU",
+    "history.memory": "Memory",
+    "history.netDown": "Network Download",
+    "history.netUp": "Network Upload",
+    "history.diskRead": "Disk Read",
+    "history.diskWrite": "Disk Write",
+    "process.eyebrow": "PROCESSES",
+    "process.title": "Resource Use",
+    "process.cpu": "CPU",
+    "process.memory": "Memory",
+    "process.network": "Network",
+    "process.name": "Process",
+    "process.pid": "PID",
+    "process.throughput": "Throughput",
+    "process.empty": "No process data yet",
+    "events.eyebrow": "ALERTS",
+    "events.title": "Events",
+    "events.empty": "No events",
+    "events.resolved": "Resolved",
+    "events.aiDiagnosis": "AI analysis",
+    "events.severity.warning": "Needs attention",
+    "events.severity.critical": "Needs prompt action",
+    "events.severity.info": "Info",
+    "events.cpu_high.title": "CPU stayed busy",
+    "events.cpu_high.detail": "Average CPU use was {percent}% over the last 3 minutes.",
+    "events.mem_pressure.title": "Available memory is running low",
+    "events.mem_pressure.detail": "Memory use is {percent}%; temporary disk use grew by {growth_gb} GB in 10 minutes.",
+    "events.disk_full.title": "Disk space is running low",
+    "events.disk_full.detail": "Disk {mount} is {percent}% used.",
+    "events.net_spike.title": "Network activity increased sharply",
+    "events.net_spike.detail": "Recent traffic is about {recent_mbps} MB/s, versus {baseline_mbps} MB/s normally.",
+    "search.eyebrow": "SPOTLIGHT",
+    "search.title": "Search Names and Contents",
+    "search.queryPlaceholder": "Enter a file name or content keyword",
+    "search.byName": "File name",
+    "search.byContent": "File contents",
+    "search.submit": "Search",
+    "search.hint": "Find local files with macOS Spotlight",
+    "search.largeEyebrow": "STORAGE SCAN",
+    "search.largeTitle": "Large File Scan",
+    "search.pathPlaceholder": "Path, for example ~/Downloads",
+    "search.minimum": "At least",
+    "search.scan": "Start Scan",
+    "search.largeHint": "Hidden folders and .app/.framework contents are skipped",
+    "search.searching": "Searching…",
+    "search.scanning": "Scanning for up to 30 seconds…",
+    "search.noResults": "No results found",
+    "search.truncated": "The 30-second limit was reached; showing scanned results",
+    "chat.toggleTitle": "Collapse chat",
+    "chat.eyebrow": "LOCAL AI",
+    "chat.title": "System Assistant",
+    "chat.checking": "Checking",
+    "chat.ready": "qwen3:4b ready",
+    "chat.offline": "Not ready",
+    "chat.guideTitle": "Ollama is not ready",
+    "chat.guideText": "Install Ollama and download the local model to chat. Monitoring still works.",
+    "chat.retry": "Check Again",
+    "chat.placeholder": "Ask about your Mac…",
+    "chat.send": "Send",
+    "chat.thinking": "Thinking",
+    "chat.greeting": "Hi, I'm Bamai. Ask me about current resource use, history, alerts, or local files.",
+    "chat.unavailable": "Unable to answer right now: {message}",
+    "chat.trace": "🔧 View {count} tool lookups",
+    "chat.analyzing": "Checking local data…",
+    "chart.cpu": "CPU %",
+    "chart.memory": "Memory %",
+    "chart.upload": "Upload",
+    "chart.download": "Download",
+    "chart.read": "Read",
+    "chart.write": "Write",
+    "chart.core": "Core {number}",
+    "chart.average": "Average",
+    "chart.peak": "Peak",
+    "health.loadingHeadline": "Checking your Mac…",
+    "health.loadingAdvice": "Results will be ready shortly.",
+    "health.ok.headline": "Your Mac looks healthy",
+    "health.ok.advice": "You can keep using it normally.",
+    "health.warn.headline": "A few things need attention",
+    "health.warn.advice": "Try the simple steps below; there is usually no need to worry.",
+    "health.critical.headline": "One item needs prompt attention",
+    "health.critical.advice": "Try the step below soon to avoid interruptions.",
+    "health.cpu.headline": "Your Mac has stayed busy ({percent}%)",
+    "health.cpu.advice": "Check the process list below and close apps you no longer need.",
+    "health.memory.headline": "Many things are open at once ({percent}% used)",
+    "health.memory.advice": "Quit apps you are not using; {top_name} is using the most.",
+    "health.disk.headline": "Disk space is nearly full ({percent}% used)",
+    "health.disk.advice": "Remove unneeded large files and try to keep at least {free_gb} GB free.",
+    "health.network.headline": "Network activity jumped (about {mbps} MB/s)",
+    "health.network.advice": "Check for downloads, syncing, or backups; {top_name} is currently active.",
+    "health.swap.headline": "Your Mac is leaning on disk space and may feel slower",
+    "health.swap.advice": "Close a few unused apps, then see whether it feels smooth again.",
+    "health.aiLabel": "AI analysis",
+    "health.explain": "Explain with AI",
+    "health.explaining": "AI is explaining…"
+  }
+} /* i18n-dictionaries-end */;
+
+const STORAGE_KEY = "bamai.language";
+let currentLanguage = detectLanguage();
+
+function detectLanguage() {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored === "zh" || stored === "en") return stored;
+  return navigator.language?.toLowerCase().startsWith("zh") ? "zh" : "en";
+}
+
+export function getLanguage() { return currentLanguage; }
+
+export function t(key, params = {}, language = currentLanguage) {
+  const template = translations[language]?.[key] ?? translations.zh[key] ?? key;
+  return template.replace(/\{(\w+)\}/g, (_, name) => {
+    const value = params[name];
+    if (value == null || value === "") return "—";
+    if (typeof value === "number") {
+      return new Intl.NumberFormat(language === "zh" ? "zh-CN" : "en-US", {maximumFractionDigits: 1}).format(value);
+    }
+    return value;
+  });
+}
+
+export function applyTranslations(root = document) {
+  root.querySelectorAll("[data-i18n]").forEach(element => {
+    element.textContent = t(element.dataset.i18n);
+  });
+  root.querySelectorAll("[data-i18n-placeholder]").forEach(element => {
+    element.setAttribute("placeholder", t(element.dataset.i18nPlaceholder));
+  });
+  root.querySelectorAll("[data-i18n-title]").forEach(element => {
+    element.setAttribute("title", t(element.dataset.i18nTitle));
+  });
+  document.documentElement.lang = currentLanguage === "zh" ? "zh-CN" : "en";
+}
+
+export function setLanguage(language) {
+  currentLanguage = language === "zh" ? "zh" : "en";
+  localStorage.setItem(STORAGE_KEY, currentLanguage);
+  applyTranslations();
+  window.dispatchEvent(new CustomEvent("languagechange", {detail: {language: currentLanguage}}));
+}
+
+export function initI18n() {
+  applyTranslations();
+  const toggle = document.getElementById("language-toggle");
+  if (toggle) toggle.addEventListener("click", () => setLanguage(currentLanguage === "zh" ? "en" : "zh"));
+}
+
+export function formatNumber(value, options = {}) {
+  return new Intl.NumberFormat(currentLanguage === "zh" ? "zh-CN" : "en-US", options).format(value);
+}
+
+export function formatDateTime(timestamp) {
+  return new Intl.DateTimeFormat(currentLanguage === "zh" ? "zh-CN" : "en-US", {
+    dateStyle: "short", timeStyle: "medium",
+  }).format(new Date(timestamp * 1000));
+}

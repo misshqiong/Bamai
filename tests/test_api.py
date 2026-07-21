@@ -17,8 +17,9 @@ class FakeAgent:
     async def status(self):
         return self.status_value
 
-    async def chat(self, messages):
+    async def chat(self, messages, language="zh"):
         self.received = messages
+        self.language = language
         return ChatResult("当前 CPU 正常。", [{
             "tool": "get_current_stats", "args": {}, "summary": "查询了当前系统状态"
         }])
@@ -68,6 +69,19 @@ def test_chat_and_ollama_status_with_mock_agent(db):
         assert response.json()["reply"] == "当前 CPU 正常。"
         assert response.json()["tool_trace"][0]["tool"] == "get_current_stats"
         assert agent.received == [{"role": "user", "content": "CPU 怎么样？"}]
+        assert agent.language == "zh"
+
+
+def test_chat_language_follows_accept_language_header(db):
+    agent = FakeAgent()
+    with TestClient(create_app(db, collector_enabled=False, agent_client=agent)) as client:
+        response = client.post(
+            "/api/chat",
+            headers={"Accept-Language": "en-US"},
+            json={"messages": [{"role": "user", "content": "How is my Mac?"}]},
+        )
+        assert response.status_code == 200
+        assert agent.language == "en"
 
 
 def test_chat_gracefully_returns_503_when_ollama_is_unavailable(db):

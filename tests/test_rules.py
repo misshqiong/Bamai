@@ -91,3 +91,19 @@ def test_new_event_schedules_ai_diagnosis_without_changing_event_creation(db):
     assert created == [scheduled[0][0]]
     assert scheduled[0][1]["kind"] == "disk_full"
     assert db.list_events()[0]["ai_analysis"] is None
+
+
+def test_event_and_notification_follow_current_language(db):
+    now = 700_000
+    db.insert_disk_usage(now, [{"mount": "/", "total": 100, "used": 96, "percent": 96}])
+    notifications = []
+    rules = RuleEngine(
+        db,
+        notifier=lambda title, detail: notifications.append((title, detail)) or True,
+        language_provider=lambda: "en",
+    )
+    rules.evaluate(now)
+    event = db.list_events()[0]
+    assert event["title"] == "Disk space is running low"
+    assert event["params"] == {"mount": "/", "percent": 96.0}
+    assert notifications[0][0] == "Disk space is running low"

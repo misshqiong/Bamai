@@ -72,7 +72,7 @@ class Collector:
             return
         self._stop_event.clear()
         self._thread = threading.Thread(
-            target=self._run, name="macpilot-collector", daemon=True
+            target=self._run, name="bamai-collector", daemon=True
         )
         self._thread.start()
 

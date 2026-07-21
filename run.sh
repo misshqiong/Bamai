@@ -24,6 +24,5 @@ if [[ ! -s web/vendor/echarts.min.js ]]; then
     --output web/vendor/echarts.min.js
 fi
 
-echo "MacPilot 启动中：http://127.0.0.1:8737"
+echo "Bamai（把脉）启动中：http://127.0.0.1:8737"
 exec .venv/bin/uvicorn server.main:app --host 127.0.0.1 --port 8737
-

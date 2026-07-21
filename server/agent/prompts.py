@@ -1,19 +1,23 @@
-"""MacPilot Agent 系统提示词。"""
+"""Bamai Agent 系统提示词。"""
 
 from __future__ import annotations
 
 import time
+import json
 from datetime import datetime
 
+from ..localization import normalize_language
 
-def build_system_prompt(now: int | None = None) -> str:
+
+def build_system_prompt(now: int | None = None, language: str = "zh") -> str:
     current_ts = int(time.time()) if now is None else int(now)
     current = datetime.fromtimestamp(current_ts).astimezone()
     today = current.replace(hour=0, minute=0, second=0, microsecond=0)
-    return f"""你是 MacPilot，一名运行在用户 Mac 上的本地系统状态助手。
+    answer_language = "中文" if normalize_language(language) == "zh" else "English"
+    return f"""你是 Bamai（把脉），一名运行在用户 Mac 上的本地系统状态助手。
 
 必须遵守：
-1. 始终使用中文回答，表达简洁清楚，并给出可操作建议。
+1. 使用{answer_language}回答；若用户明显使用另一种语言提问，则跟随用户的语言。表达简洁清楚，并给出可操作建议。
 2. 涉及 CPU、内存、磁盘、网络、进程、事件或文件的数据时，必须先调用工具并只依据工具返回的真实数据回答，绝不编造数字。
 3. 数据不足、采样缺失或工具失败时，明确说明限制，不能用猜测补全。
 4. 可以建议用户检查或结束进程，但杀进程、删除文件等危险操作只能给出建议和影响说明，由用户自行执行。
@@ -27,14 +31,33 @@ def build_system_prompt(now: int | None = None) -> str:
 """
 
 
-def build_event_diagnosis_prompt(event: dict) -> str:
+def build_event_diagnosis_prompt(event: dict, language: str = "zh") -> str:
+    if normalize_language(language) == "en":
+        return (
+            "Explain this Bamai alert for a non-technical Mac user. Use plain everyday language, "
+            "avoid unexplained terms such as swap, RSS, or bps, and do not alarm the user. "
+            "Use tools when needed, then give a short cause, whether it is still happening, and "
+            "one to three safe next steps.\n"
+            f"Timestamp: {event['ts']}\nKind: {event['kind']}\nSeverity: {event['severity']}\n"
+            f"Title: {event['title']}\nDetail: {event['detail']}"
+        )
     return (
-        "请诊断下面这条 MacPilot 异常事件。必要时调用工具核对当前状态和事件前后的历史数据；"
-        "用两到四句话说明可能原因、当前是否仍异常，以及一到三条安全的处理建议。\n"
-        f"事件时间戳：{event['ts']}\n"
-        f"事件类型：{event['kind']}\n"
-        f"严重级别：{event['severity']}\n"
-        f"标题：{event['title']}\n"
-        f"详情：{event['detail']}"
+        "请用普通 Mac 用户能看懂的日常语言解释下面这条 Bamai 异常，不使用未经解释的 swap、RSS、bps 等术语，"
+        "也不要制造焦虑。必要时调用工具核对数据，然后简短说明可能原因、现在是否仍在发生，以及一到三条安全建议。\n"
+        f"事件时间戳：{event['ts']}\n事件类型：{event['kind']}\n严重级别：{event['severity']}\n"
+        f"标题：{event['title']}\n详情：{event['detail']}"
     )
 
+
+def build_health_explanation_prompt(health: dict, language: str = "zh") -> str:
+    payload = json.dumps(health, ensure_ascii=False, separators=(",", ":"))
+    if normalize_language(language) == "en":
+        return (
+            "Explain this current Mac health result to a non-technical user in a short paragraph. "
+            "Use plain language, avoid unexplained technical terms, mention what is fine, and give "
+            f"only safe actionable advice. Health JSON: {payload}"
+        )
+    return (
+        "请把下面的当前 Mac 健康结果解释给完全不懂技术的用户。用一小段日常语言说明哪些正常、哪些需要留意，"
+        f"避免未经解释的术语，只给安全且能立即执行的建议。健康数据：{payload}"
+    )

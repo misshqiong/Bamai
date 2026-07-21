@@ -110,7 +110,7 @@ def test_event_diagnosis_updates_database_without_real_ollama(db):
         async def status(self):
             return {"available": True, "model_pulled": True, "model": "qwen3:4b"}
 
-        async def chat(self, messages):
+        async def chat(self, messages, language="zh"):
             assert "cpu_high" in messages[0]["content"]
             return ChatResult("CPU 高负载可能由编译任务造成，建议先观察进程列表。", [])
 

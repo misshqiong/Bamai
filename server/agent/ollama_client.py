@@ -8,7 +8,7 @@ import logging
 import re
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 import httpx
 
@@ -72,8 +72,10 @@ class OllamaClient:
         except (httpx.HTTPError, ValueError, TypeError):
             return {"available": False, "model_pulled": False, "model": self.model}
 
-    async def chat(self, messages: Sequence[Mapping[str, Any]]) -> ChatResult:
-        conversation = [{"role": "system", "content": build_system_prompt()}]
+    async def chat(
+        self, messages: Sequence[Mapping[str, Any]], language: str = "zh"
+    ) -> ChatResult:
+        conversation = [{"role": "system", "content": build_system_prompt(language=language)}]
         conversation.extend(self._clean_messages(messages))
         trace: list[dict[str, Any]] = []
 
@@ -188,10 +190,14 @@ class OllamaClient:
 class EventDiagnoser:
     """用独立线程运行异步 Agent，避免规则评估阻塞采集线程。"""
 
-    def __init__(self, db: Database, client: OllamaClient) -> None:
+    def __init__(
+        self, db: Database, client: OllamaClient,
+        language_provider: Callable[[], str] = lambda: "zh",
+    ) -> None:
         self.db = db
         self.client = client
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="macpilot-ai")
+        self.language_provider = language_provider
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="bamai-ai")
 
     def schedule(self, event_id: int, event: dict[str, Any]) -> Future:
         return self._executor.submit(self._run, event_id, event)
@@ -204,9 +210,10 @@ class EventDiagnoser:
             status = await self.client.status()
             if not status["available"] or not status["model_pulled"]:
                 return
+            language = event.get("language") or self.language_provider()
             result = await self.client.chat([{
-                "role": "user", "content": build_event_diagnosis_prompt(event)
-            }])
+                "role": "user", "content": build_event_diagnosis_prompt(event, language)
+            }], language=language)
             self.db.update_event_ai_analysis(event_id, result.reply)
         except Exception as exc:  # AI 诊断绝不能影响事件和采集线程
             logger.warning("事件 %s 的 AI 诊断失败: %s", event_id, exc)

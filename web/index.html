@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MacPilot · 本地系统监控</title>
+  <title data-i18n="app.documentTitle">Bamai · 本地系统监控</title>
   <link rel="stylesheet" href="/static/css/app.css">
 </head>
 <body>
@@ -11,43 +11,57 @@
     <main class="main-area">
       <header class="app-header">
         <div>
-          <p class="eyebrow">LOCAL SYSTEM MONITOR</p>
-          <h1>MacPilot</h1>
+          <p class="eyebrow" data-i18n="app.tagline">给你的 Mac 把把脉</p>
+          <h1>Bamai <small data-i18n="app.subtitle">把脉</small></h1>
         </div>
-        <div class="connection"><span id="ws-dot" class="status-dot"></span><span id="ws-status">正在连接</span></div>
+        <div class="header-actions">
+          <button id="language-toggle" class="language-toggle" type="button" data-i18n-title="language.toggleTitle">中 / EN</button>
+          <div class="connection"><span id="ws-dot" class="status-dot"></span><span id="ws-status" data-i18n="connection.connecting">正在连接</span></div>
+        </div>
       </header>
 
+      <section id="health-banner" class="health-banner ok" aria-live="polite">
+        <div class="health-icon" id="health-icon">✓</div>
+        <div class="health-content">
+          <h2 id="health-headline" data-i18n="health.loadingHeadline">正在给电脑做体检…</h2>
+          <p id="health-advice" data-i18n="health.loadingAdvice">结果马上就好。</p>
+          <ul id="health-checks" class="health-checks"></ul>
+          <div id="health-ai" class="health-ai hidden"><strong data-i18n="health.aiLabel">AI 分析</strong><p id="health-ai-text"></p></div>
+        </div>
+        <button id="health-explain" class="health-explain" type="button" disabled data-i18n="health.explain">AI 解读</button>
+      </section>
+
       <nav class="tabs" aria-label="主视图">
-        <button class="tab active" data-view="dashboard">仪表盘</button>
-        <button class="tab" data-view="search">文件搜索</button>
+        <button class="tab active" data-view="dashboard" data-i18n="nav.dashboard">仪表盘</button>
+        <button class="tab" data-view="search" data-i18n="nav.search">文件搜索</button>
       </nav>
 
       <section id="dashboard-view" class="view active">
         <div class="status-grid">
-          <article class="status-card cpu"><span>CPU</span><strong id="cpu-value">--%</strong><small id="load-value">负载 --</small></article>
-          <article class="status-card memory"><span>内存</span><strong id="memory-value">--%</strong><small id="memory-detail">-- / --</small></article>
-          <article class="status-card disk"><span>磁盘</span><strong id="disk-value">--%</strong><small id="disk-detail">正在采集</small></article>
-          <article class="status-card network"><span>网络</span><strong id="network-value">--</strong><small id="network-detail">↑ -- · ↓ --</small></article>
+          <article class="status-card cpu"><span data-i18n="cards.cpu">CPU</span><strong id="cpu-value">--%</strong><small id="load-value" data-i18n="cards.loadPending">负载 --</small></article>
+          <article class="status-card memory"><span data-i18n="cards.memory">内存</span><strong id="memory-value">--%</strong><small id="memory-detail">-- / --</small></article>
+          <article class="status-card disk"><span data-i18n="cards.disk">磁盘</span><strong id="disk-value">--%</strong><small id="disk-detail" data-i18n="cards.collecting">正在采集</small></article>
+          <article class="status-card network"><span data-i18n="cards.network">网络</span><strong id="network-value">--</strong><small id="network-detail">↑ -- · ↓ --</small></article>
         </div>
 
         <section class="panel">
-          <div class="panel-heading"><div><p class="eyebrow">LIVE · 5 MIN</p><h2>实时曲线</h2></div></div>
+          <div class="panel-heading"><div><p class="eyebrow" data-i18n="live.eyebrow">实时 · 5 分钟</p><h2 data-i18n="live.title">实时曲线</h2></div></div>
           <div class="chart-grid">
-            <div><h3>CPU / 内存</h3><div id="cpu-memory-chart" class="chart"></div></div>
-            <div><h3>网络吞吐</h3><div id="network-chart" class="chart"></div></div>
-            <div><h3>磁盘 I/O</h3><div id="disk-io-chart" class="chart"></div></div>
-            <div><h3>每核 CPU</h3><div id="core-chart" class="chart"></div></div>
+            <div><h3 data-i18n="live.cpuMemory">CPU / 内存</h3><div id="cpu-memory-chart" class="chart"></div></div>
+            <div><h3 data-i18n="live.network">网络吞吐</h3><div id="network-chart" class="chart"></div></div>
+            <div><h3 data-i18n="live.diskIo">磁盘读写</h3><div id="disk-io-chart" class="chart"></div></div>
+            <div><h3 data-i18n="live.perCore">每核 CPU</h3><div id="core-chart" class="chart"></div></div>
           </div>
         </section>
 
         <section class="panel">
           <div class="panel-heading history-controls">
-            <div><p class="eyebrow">HISTORY</p><h2>历史趋势</h2></div>
+            <div><p class="eyebrow" data-i18n="history.eyebrow">历史</p><h2 data-i18n="history.title">历史趋势</h2></div>
             <div class="control-row">
               <select id="history-metric" aria-label="历史指标">
-                <option value="cpu_percent">CPU</option><option value="mem_percent">内存</option>
-                <option value="net_down_bps">网络下载</option><option value="net_up_bps">网络上传</option>
-                <option value="disk_read_bps">磁盘读取</option><option value="disk_write_bps">磁盘写入</option>
+                <option value="cpu_percent" data-i18n="history.cpu">CPU</option><option value="mem_percent" data-i18n="history.memory">内存</option>
+                <option value="net_down_bps" data-i18n="history.netDown">网络下载</option><option value="net_up_bps" data-i18n="history.netUp">网络上传</option>
+                <option value="disk_read_bps" data-i18n="history.diskRead">磁盘读取</option><option value="disk_write_bps" data-i18n="history.diskWrite">磁盘写入</option>
               </select>
               <div id="range-buttons" class="segmented">
                 <button data-hours="1" class="active">1h</button><button data-hours="6">6h</button>
@@ -61,57 +75,57 @@
         <div class="lower-grid">
           <section class="panel">
             <div class="panel-heading">
-              <div><p class="eyebrow">PROCESSES</p><h2>资源进程</h2></div>
-              <div id="process-sort" class="segmented"><button data-sort="cpu" class="active">CPU</button><button data-sort="memory">内存</button><button data-sort="network">网络</button></div>
+              <div><p class="eyebrow" data-i18n="process.eyebrow">进程</p><h2 data-i18n="process.title">资源进程</h2></div>
+              <div id="process-sort" class="segmented"><button data-sort="cpu" class="active" data-i18n="process.cpu">CPU</button><button data-sort="memory" data-i18n="process.memory">内存</button><button data-sort="network" data-i18n="process.network">网络</button></div>
             </div>
-            <div class="table-wrap"><table><thead><tr><th>进程</th><th>PID</th><th id="process-value-head">CPU</th></tr></thead><tbody id="process-body"></tbody></table></div>
+            <div class="table-wrap"><table><thead><tr><th data-i18n="process.name">进程</th><th data-i18n="process.pid">PID</th><th id="process-value-head">CPU</th></tr></thead><tbody id="process-body"></tbody></table></div>
           </section>
           <section class="panel">
-            <div class="panel-heading"><div><p class="eyebrow">ALERTS</p><h2>异常事件 <span id="event-count" class="badge">0</span></h2></div></div>
-            <div id="events-list" class="events-list"><p class="empty">暂无事件</p></div>
+            <div class="panel-heading"><div><p class="eyebrow" data-i18n="events.eyebrow">提醒</p><h2><span data-i18n="events.title">异常事件</span> <span id="event-count" class="badge">0</span></h2></div></div>
+            <div id="events-list" class="events-list"><p class="empty" data-i18n="events.empty">暂无异常事件</p></div>
           </section>
         </div>
       </section>
 
       <section id="search-view" class="view">
         <section class="panel search-panel">
-          <div><p class="eyebrow">SPOTLIGHT</p><h2>文件名与内容搜索</h2></div>
+          <div><p class="eyebrow" data-i18n="search.eyebrow">聚焦搜索</p><h2 data-i18n="search.title">文件名与内容搜索</h2></div>
           <form id="search-form" class="search-form">
-            <input id="search-query" required placeholder="输入文件名或内容关键词" autocomplete="off">
-            <select id="search-kind"><option value="name">文件名</option><option value="content">文件内容</option></select>
-            <button class="primary" type="submit">搜索</button>
+            <input id="search-query" required placeholder="输入文件名或内容关键词" data-i18n-placeholder="search.queryPlaceholder" autocomplete="off">
+            <select id="search-kind"><option value="name" data-i18n="search.byName">文件名</option><option value="content" data-i18n="search.byContent">文件内容</option></select>
+            <button class="primary" type="submit" data-i18n="search.submit">搜索</button>
           </form>
-          <div id="search-results" class="file-results"><p class="empty">使用 macOS Spotlight 在本机查找文件</p></div>
+          <div id="search-results" class="file-results"><p class="empty" data-i18n="search.hint">使用 macOS Spotlight 在本机查找文件</p></div>
         </section>
         <section class="panel search-panel">
-          <div><p class="eyebrow">STORAGE SCAN</p><h2>大文件扫描</h2></div>
+          <div><p class="eyebrow" data-i18n="search.largeEyebrow">存储扫描</p><h2 data-i18n="search.largeTitle">大文件扫描</h2></div>
           <form id="large-form" class="search-form">
-            <input id="large-path" value="~" placeholder="扫描路径，例如 ~/Downloads">
-            <label class="inline-label">至少 <input id="large-min" type="number" min="0" value="100"> MB</label>
-            <button class="primary" type="submit">开始扫描</button>
+            <input id="large-path" value="~" placeholder="扫描路径，例如 ~/Downloads" data-i18n-placeholder="search.pathPlaceholder">
+            <label class="inline-label"><span data-i18n="search.minimum">至少</span> <input id="large-min" type="number" min="0" value="100"> MB</label>
+            <button class="primary" type="submit" data-i18n="search.scan">开始扫描</button>
           </form>
-          <div id="large-results" class="file-results"><p class="empty">隐藏目录、.app 和 .framework 内部会自动跳过</p></div>
+          <div id="large-results" class="file-results"><p class="empty" data-i18n="search.largeHint">隐藏目录、.app 和 .framework 内部会自动跳过</p></div>
         </section>
       </section>
     </main>
 
     <aside id="chat-panel" class="chat-panel">
-      <button id="chat-toggle" class="chat-toggle" title="折叠聊天栏">›</button>
+      <button id="chat-toggle" class="chat-toggle" title="折叠聊天栏" data-i18n-title="chat.toggleTitle">›</button>
       <div class="chat-header">
-        <div><p class="eyebrow">LOCAL AI</p><h2>系统助手</h2></div>
-        <span id="ollama-state" class="ollama-state">检测中</span>
+        <div><p class="eyebrow" data-i18n="chat.eyebrow">本地 AI</p><h2 data-i18n="chat.title">系统助手</h2></div>
+        <span id="ollama-state" class="ollama-state" data-i18n="chat.checking">检测中</span>
       </div>
       <div id="ollama-guide" class="chat-guide hidden">
         <div class="pilot-orb">M</div>
-        <h3>Ollama 未就绪</h3>
-        <p>安装 Ollama 并下载本地模型后即可对话。监控功能不受影响。</p>
+        <h3 data-i18n="chat.guideTitle">Ollama 未就绪</h3>
+        <p data-i18n="chat.guideText">安装 Ollama 并下载本地模型后即可对话。监控功能不受影响。</p>
         <code>brew install ollama &amp;&amp; ollama pull qwen3:4b</code>
-        <button id="ollama-retry" class="secondary" type="button">重新检测</button>
+        <button id="ollama-retry" class="secondary" type="button" data-i18n="chat.retry">重新检测</button>
       </div>
       <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
       <form id="chat-form" class="chat-input">
-        <textarea id="chat-text" rows="1" disabled placeholder="询问当前系统状态…"></textarea>
-        <button id="chat-send" type="submit" disabled>发送</button>
+        <textarea id="chat-text" rows="1" disabled placeholder="询问当前系统状态…" data-i18n-placeholder="chat.placeholder"></textarea>
+        <button id="chat-send" type="submit" disabled data-i18n="chat.send">发送</button>
       </form>
     </aside>
   </div>

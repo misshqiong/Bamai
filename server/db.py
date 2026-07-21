@@ -100,6 +100,10 @@ class Database:
         """
         with self._write_lock, self.connect() as conn:
             conn.executescript(schema)
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
+            if "params" not in columns:
+                # 存量表只增列，不重建、不复制，旧行自然保持 params=NULL。
+                conn.execute("ALTER TABLE events ADD COLUMN params TEXT")
 
     def insert_metric(self, metric: Mapping[str, Any]) -> None:
         columns = (
@@ -279,12 +283,18 @@ class Database:
         return [dict(row) for row in rows]
 
     def create_event(
-        self, ts: int, kind: str, severity: str, title: str, detail: str
+        self, ts: int, kind: str, severity: str, title: str, detail: str,
+        params: Mapping[str, Any] | None = None,
     ) -> int:
+        encoded_params = (
+            json.dumps(params, ensure_ascii=False, separators=(",", ":"))
+            if params is not None else None
+        )
         with self._write_lock, self.connect() as conn:
             cursor = conn.execute(
-                "INSERT INTO events(ts,kind,severity,title,detail,ai_analysis,resolved_ts) "
-                "VALUES(?,?,?,?,?,NULL,NULL)", (ts, kind, severity, title, detail)
+                "INSERT INTO events(ts,kind,severity,title,detail,ai_analysis,resolved_ts,params) "
+                "VALUES(?,?,?,?,?,NULL,NULL,?)",
+                (ts, kind, severity, title, detail, encoded_params),
             )
             return int(cursor.lastrowid)
 
@@ -294,7 +304,7 @@ class Database:
                 "SELECT * FROM events WHERE kind=? AND ts>=? ORDER BY ts DESC LIMIT 1",
                 (kind, since_ts),
             ).fetchone()
-        return dict(row) if row else None
+        return self._event_row(row) if row else None
 
     def resolve_events(self, kind: str, resolved_ts: int) -> int:
         with self._write_lock, self.connect() as conn:
@@ -317,7 +327,20 @@ class Database:
                     "SELECT * FROM events WHERE ts>=? ORDER BY ts DESC LIMIT ?",
                     (int(since_ts), limit),
                 ).fetchall()
-        return [dict(row) for row in rows]
+        return [self._event_row(row) for row in rows]
+
+    @staticmethod
+    def _event_row(row: sqlite3.Row) -> dict[str, Any]:
+        event = dict(row)
+        encoded = event.get("params")
+        if encoded is None:
+            return event
+        try:
+            parsed = json.loads(encoded)
+            event["params"] = parsed if isinstance(parsed, dict) else None
+        except (TypeError, json.JSONDecodeError):
+            event["params"] = None
+        return event
 
     def update_event_ai_analysis(self, event_id: int, analysis: str) -> bool:
         with self._write_lock, self.connect() as conn:
@@ -326,6 +349,15 @@ class Database:
                 (analysis.strip(), int(event_id)),
             )
             return cursor.rowcount > 0
+
+    def latest_unresolved_ai_analysis(self) -> str | None:
+        with self.connect(read_only=True) as conn:
+            row = conn.execute(
+                "SELECT ai_analysis FROM events WHERE resolved_ts IS NULL "
+                "AND ai_analysis IS NOT NULL AND TRIM(ai_analysis)<>'' "
+                "ORDER BY ts DESC LIMIT 1"
+            ).fetchone()
+        return str(row[0]) if row else None
 
     def unresolved_event_count(self) -> int:
         with self.connect(read_only=True) as conn:
