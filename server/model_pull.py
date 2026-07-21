@@ -17,7 +17,8 @@ RECOMMENDED_MODELS = [
     {"name": "qwen3:4b", "size_gb": 3, "memory_gb": 8},
     {"name": "qwen3:8b", "size_gb": 6, "memory_gb": 16},
     {"name": "qwen3:14b", "size_gb": 10, "memory_gb": 24},
-    {"name": "glm4:9b", "size_gb": 6, "memory_gb": 16},
+    # 注意：glm4:9b 虽然声明 tools 能力，但 Ollama 模板下实测从不发出 tool_calls
+    # （会声称"无法访问外部系统"并编造数据），不能用于 Bamai 的工具循环，故不推荐。
     {"name": "mistral:7b", "size_gb": 4, "memory_gb": 8},
 ]
 
