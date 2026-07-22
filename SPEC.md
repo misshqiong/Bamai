@@ -298,11 +298,15 @@ pytest 单测（不依赖 Ollama、不依赖真实系统状态）：
 - `model list|use <name>|pull <name>`：调 `/api/settings` 与 Ollama API 的薄封装。
 - `autostart on|off`：生成/移除 `~/Library/LaunchAgents/com.bamai.app.plist`；
   plist 含 `KeepAlive.SuccessfulExit=false` + `ThrottleInterval=10`，异常退出自动拉起。
+  项目位于 TCC 保护目录（~/Documents 等）时 launchd 读不到脚本（退出码 126），
+  `on` 时打印提示建议改用 menubar。
 - `menubar on|off`：用 swiftc 将 `menubar/BamaiMenuBar.swift` 构建为
   `menubar/build/Bamai.app`（LSUIElement，项目路径写入 Info.plist 的 `BamaiProjectDir`），
   生成/移除 `~/Library/LaunchAgents/com.bamai.menubar.plist`。应用每 5 秒轮询
   `/api/health`，圆点按 ok/warn/critical/不可达 显示绿/黄/红/灰；菜单提供打开控制台、
   启动/重启/停止（调用 `./bamai`）；文案按 `~/.bamai/config.json` 的 language 双语切换。
+  应用同时是服务监工：连续两次轮询不可达且用户未手动停止时执行 `./bamai start`
+  自动拉起（之后退避为约每分钟一次）；项目在 TCC 保护目录时依赖应用的一次性文件夹授权。
 - `raycast/` 目录提供 Script Commands（Open Bamai / Bamai Status / Restart Bamai），
   用户在 Raycast 中添加该目录后可绑定全局快捷键。
 - 所有输出双语（简单做法：中英并排一行，如 "已启动 / started"）。

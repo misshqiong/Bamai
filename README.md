@@ -47,17 +47,17 @@ Open <http://127.0.0.1:8737>. The first start creates `.venv`, installs dependen
 
 ## Set up once, forget the service
 
-After the first start, run these two commands so you never have to start Bamai manually again:
+After the first start, run this once so you never have to start Bamai manually again:
 
 ```bash
-./bamai autostart on
 ./bamai menubar on
 ```
 
-- `autostart on` installs a login agent that starts the service at login and restarts it automatically if it crashes.
-- `menubar on` builds and installs a tiny menu bar icon (requires the Xcode Command Line Tools). The dot mirrors your Mac's health — green, yellow, red, or gray when the service is down — and the menu offers Open Dashboard, start/restart/stop.
+It builds and installs a tiny menu bar app (requires the Xcode Command Line Tools) that appears at login and supervises the service: it starts Bamai automatically, restarts it if it crashes, and stays quiet after you stop it by hand. The dot mirrors your Mac's health — green, yellow, red, or gray when the service is down — and the menu offers Open Dashboard, start/restart/stop. If the project lives inside a macOS-protected folder such as `~/Documents`, macOS shows a one-time permission prompt the first time the app touches the project — click Allow.
 
-Both are reversible with `./bamai autostart off` and `./bamai menubar off`.
+Alternatively, `./bamai autostart on` installs a plain login agent with crash recovery — use it when you don't want a menu bar icon. Note that launchd cannot read scripts inside protected folders (`~/Documents`, `~/Desktop`, `~/Downloads`), so in that layout prefer the menu bar app.
+
+Both are reversible with `./bamai menubar off` and `./bamai autostart off`.
 
 AI is optional. To enable it:
 
