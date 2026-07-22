@@ -288,13 +288,23 @@ pytest 单测（不依赖 Ollama、不依赖真实系统状态）：
 
 项目根下可执行 bash 脚本 `./bamai`：
 
-- `start`：venv 创建 + 依赖安装 + vendor 下载（幂等）→ 以守护方式启动 uvicorn
+- `start`：venv 创建 + 依赖安装 + vendor 下载（幂等；依赖以 `requirements.txt` 的
+  SHA-256 指纹缓存于 `.venv/.deps-stamp`，未变化则跳过 pip）→ 以守护方式启动 uvicorn
   （nohup，pid 写 `~/.bamai/bamai.pid`，日志 `~/.bamai/bamai.log`）→ `open http://127.0.0.1:8737`。
   已在运行则提示并直接打开浏览器。`--foreground` 前台运行（开发用）。
-  `--with-ai`：检测 ollama 与模型，缺失时打印引导（检测到 brew 时询问是否代为安装/拉取）。
+  `--with-ai`：检测 ollama 与模型，缺失时打印引导（检测到 brew 时询问是否代为安装/拉取）；
+  brew 安装的 Ollama 未运行时注册为 `brew services` 登录服务（常驻自愈），否则 nohup 兜底。
 - `stop`：读 pid 优雅终止；`restart`；`status`：进程/端口/Ollama/模型四项状态；`logs`：tail -f。
 - `model list|use <name>|pull <name>`：调 `/api/settings` 与 Ollama API 的薄封装。
-- `autostart on|off`：生成/移除 `~/Library/LaunchAgents/com.bamai.app.plist`。
+- `autostart on|off`：生成/移除 `~/Library/LaunchAgents/com.bamai.app.plist`；
+  plist 含 `KeepAlive.SuccessfulExit=false` + `ThrottleInterval=10`，异常退出自动拉起。
+- `menubar on|off`：用 swiftc 将 `menubar/BamaiMenuBar.swift` 构建为
+  `menubar/build/Bamai.app`（LSUIElement，项目路径写入 Info.plist 的 `BamaiProjectDir`），
+  生成/移除 `~/Library/LaunchAgents/com.bamai.menubar.plist`。应用每 5 秒轮询
+  `/api/health`，圆点按 ok/warn/critical/不可达 显示绿/黄/红/灰；菜单提供打开控制台、
+  启动/重启/停止（调用 `./bamai`）；文案按 `~/.bamai/config.json` 的 language 双语切换。
+- `raycast/` 目录提供 Script Commands（Open Bamai / Bamai Status / Restart Bamai），
+  用户在 Raycast 中添加该目录后可绑定全局快捷键。
 - 所有输出双语（简单做法：中英并排一行，如 "已启动 / started"）。
 
 ## 16. 运行时设置与模型切换

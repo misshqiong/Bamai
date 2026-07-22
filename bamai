@@ -17,7 +17,7 @@ die() { say "$1" "$2" >&2; exit 1; }
 
 usage() {
   say "用法：./bamai <命令> [选项]" "Usage: ./bamai <command> [options]"
-  say "命令：start | stop | restart | status | logs | model | autostart" "Commands: start | stop | restart | status | logs | model | autostart"
+  say "命令：start | stop | restart | status | logs | model | autostart | menubar" "Commands: start | stop | restart | status | logs | model | autostart | menubar"
   say "选项：--foreground（前台运行），--with-ai（同时管理 Ollama）" "Options: --foreground (stay in foreground), --with-ai (also manage Ollama)"
 }
 
@@ -46,8 +46,14 @@ prepare_runtime() {
     say "首次运行：正在创建 Python 环境…" "First run: creating the Python environment…"
     "$python_bin" -m venv .venv >/dev/null || die "无法创建 Python 环境。" "Could not create the Python environment."
   fi
-  say "正在检查依赖…" "Checking dependencies…"
-  .venv/bin/python -m pip install --disable-pip-version-check -q -r requirements.txt >/dev/null 2>&1 || die "依赖安装失败。" "Dependency installation failed."
+  # requirements.txt 未变化时跳过 pip，让日常启动保持瞬时
+  local deps_stamp=".venv/.deps-stamp" deps_hash
+  deps_hash="$(shasum -a 256 requirements.txt | awk '{print $1}')"
+  if [[ ! -f "$deps_stamp" || "$(cat "$deps_stamp" 2>/dev/null)" != "$deps_hash" ]]; then
+    say "正在检查依赖…" "Checking dependencies…"
+    .venv/bin/python -m pip install --disable-pip-version-check -q -r requirements.txt >/dev/null 2>&1 || die "依赖安装失败。" "Dependency installation failed."
+    printf '%s\n' "$deps_hash" > "$deps_stamp"
+  fi
   mkdir -p web/vendor
   if [[ ! -s web/vendor/echarts.min.js ]]; then
     say "正在下载本地图表组件…" "Downloading the local chart component…"
@@ -77,9 +83,15 @@ start_ai() {
     fi
   fi
   if ! ollama_ready; then
-    say "正在启动 Ollama…" "Starting Ollama…"
-    nohup ollama serve >>"$OLLAMA_LOG_FILE" 2>&1 &
-    printf '%s\n' "$!" > "$OLLAMA_PID_FILE"
+    # 优先注册为 brew 登录服务：一次设置后 Ollama 常驻自愈，此后无需 --with-ai
+    if command -v brew >/dev/null 2>&1 && brew list ollama >/dev/null 2>&1; then
+      say "正在把 Ollama 注册为登录常驻服务（brew services）…" "Registering Ollama as a login service (brew services)…"
+      brew services start ollama >/dev/null 2>&1 || true
+    else
+      say "正在启动 Ollama…" "Starting Ollama…"
+      nohup ollama serve >>"$OLLAMA_LOG_FILE" 2>&1 &
+      printf '%s\n' "$!" > "$OLLAMA_PID_FILE"
+    fi
     local attempt
     for attempt in {1..30}; do
       ollama_ready && break
@@ -167,6 +179,9 @@ stop_ai() {
       say "已停止由 Bamai 启动的 Ollama。" "Stopped the Ollama process started by Bamai."
     fi
     rm -f "$OLLAMA_PID_FILE"
+  elif command -v brew >/dev/null 2>&1 && brew services info ollama --json 2>/dev/null | grep -q '"running": *true'; then
+    brew services stop ollama >/dev/null 2>&1 || true
+    say "已停止 brew services 中的 Ollama（下次登录不再自启）。" "Stopped Ollama in brew services (it will no longer start at login)."
   else
     say "Bamai 未管理 Ollama 进程。" "Bamai is not managing an Ollama process."
   fi
@@ -322,6 +337,9 @@ autostart_command() {
         [[ -n "$with_ai_xml" ]] && printf '%s\n' "$with_ai_xml"
         printf '%s\n' '  </array>'
         printf '%s\n' '  <key>RunAtLoad</key><true/>'
+        # 异常退出自动拉起（正常 stop 不拉起），服务从"要维护"变成"永远在"
+        printf '%s\n' '  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>'
+        printf '%s\n' '  <key>ThrottleInterval</key><integer>10</integer>'
         printf '  <key>StandardOutPath</key><string>%s</string>\n' "$LOG_FILE"
         printf '  <key>StandardErrorPath</key><string>%s</string>\n' "$LOG_FILE"
         printf '%s\n' '</dict></plist>'
@@ -343,6 +361,63 @@ autostart_command() {
   esac
 }
 
+menubar_command() {
+  local action="${1:-}"
+  [[ "$#" -le 1 ]] || die "menubar 参数过多。" "Too many menubar arguments."
+  local app_dir="$PROJECT_DIR/menubar/build/Bamai.app"
+  local binary="$app_dir/Contents/MacOS/Bamai"
+  local source="$PROJECT_DIR/menubar/BamaiMenuBar.swift"
+  local plist="$HOME/Library/LaunchAgents/com.bamai.menubar.plist"
+  case "$action" in
+    on)
+      command -v swiftc >/dev/null 2>&1 || die "需要 Swift 编译器；请运行：xcode-select --install" "Swift compiler required; run: xcode-select --install"
+      if [[ ! -x "$binary" || "$source" -nt "$binary" ]]; then
+        say "正在构建菜单栏应用…" "Building the menu bar app…"
+        mkdir -p "$app_dir/Contents/MacOS"
+        swiftc -O -o "$binary" "$source" || die "菜单栏应用构建失败。" "Menu bar app build failed."
+      fi
+      {
+        printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>'
+        printf '%s\n' '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+        printf '%s\n' '<plist version="1.0"><dict>'
+        printf '%s\n' '  <key>CFBundleIdentifier</key><string>com.bamai.menubar</string>'
+        printf '%s\n' '  <key>CFBundleName</key><string>Bamai</string>'
+        printf '%s\n' '  <key>CFBundleExecutable</key><string>Bamai</string>'
+        printf '%s\n' '  <key>CFBundlePackageType</key><string>APPL</string>'
+        printf '%s\n' '  <key>LSUIElement</key><true/>'
+        printf '  <key>BamaiProjectDir</key><string>%s</string>\n' "$PROJECT_DIR"
+        printf '%s\n' '</dict></plist>'
+      } > "$app_dir/Contents/Info.plist"
+      codesign --force --sign - "$app_dir" >/dev/null 2>&1 || true
+      {
+        printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>'
+        printf '%s\n' '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+        printf '%s\n' '<plist version="1.0"><dict>'
+        printf '%s\n' '  <key>Label</key><string>com.bamai.menubar</string>'
+        printf '%s\n' '  <key>ProgramArguments</key><array>'
+        printf '      <string>%s</string>\n' "$binary"
+        printf '%s\n' '  </array>'
+        printf '%s\n' '  <key>RunAtLoad</key><true/>'
+        printf '%s\n' '  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>'
+        printf '%s\n' '  <key>ThrottleInterval</key><integer>10</integer>'
+        printf '%s\n' '</dict></plist>'
+      } > "$plist"
+      launchctl bootout "gui/$(id -u)/com.bamai.menubar" >/dev/null 2>&1 || true
+      launchctl bootstrap "gui/$(id -u)" "$plist" >/dev/null 2>&1 || true
+      say "菜单栏图标已启用（登录自动出现）。" "Menu bar icon enabled (appears at login)."
+      ;;
+    off)
+      launchctl bootout "gui/$(id -u)/com.bamai.menubar" >/dev/null 2>&1 || true
+      [[ -f "$plist" ]] && rm -f "$plist"
+      say "菜单栏图标已关闭。" "Menu bar icon disabled."
+      ;;
+    *)
+      say "用法：./bamai menubar on|off" "Usage: ./bamai menubar on|off"
+      [[ -n "$action" ]] && return 1 || return 0
+      ;;
+  esac
+}
+
 command="${1:-}"
 [[ $# -gt 0 ]] && shift
 case "$command" in
@@ -353,6 +428,7 @@ case "$command" in
   logs) logs_command "$@" ;;
   model) model_command "$@" ;;
   autostart) autostart_command "$@" ;;
+  menubar) menubar_command "$@" ;;
   -h|--help|help|"") usage ;;
   *) usage; die "未知命令：$command" "Unknown command: $command" ;;
 esac
