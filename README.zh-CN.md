@@ -62,6 +62,11 @@ ollama pull qwen3:4b
 | `qwen3:4b` | 3 GB | 8 GB | 响应快，也是默认选择 |
 | `qwen3:8b` | 6 GB | 16 GB | 更详细的解释 |
 | `qwen3:14b` | 10 GB | 24 GB | 适合配置较高的 Mac，推理质量更好 |
+| `llama3.1:8b` | 5 GB | 16 GB | 偏英文使用、喜欢 Llama 生态的用户 |
+
+中文场景首选 Qwen3 系列；`llama3.1:8b` 是实测合格的英文向备选。
+
+每个推荐模型都通过了两步工具调用实测（直连 Ollama 的单工具探测 + Bamai 完整 agent 链路测试）。一些知名模型虽然声明支持 `tools`，但实测从不发出结构化工具调用（`glm4:9b`、`mistral:7b`）或直接拒绝（`gemma3`）——它们无法通过 Bamai 读取你的系统数据，因此刻意不列入。
 
 可以在“设置”页面安装或切换模型，也可以运行 `./bamai model pull <name>` 或 `./bamai model use <name>`。
 

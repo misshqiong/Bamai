@@ -62,6 +62,11 @@ The legacy `./run.sh` entry point remains available and starts Bamai in the fore
 | `qwen3:4b` | 3 GB | 8 GB | Fast responses and the default experience |
 | `qwen3:8b` | 6 GB | 16 GB | More detailed explanations |
 | `qwen3:14b` | 10 GB | 24 GB | Higher-quality reasoning on capable Macs |
+| `llama3.1:8b` | 5 GB | 16 GB | English-first users who prefer the Llama ecosystem |
+
+Qwen3 models are the best choice for Chinese; `llama3.1:8b` is a verified alternative for English-first users.
+
+Every recommended model has passed a two-step tool-calling verification (a direct single-tool probe against Ollama, then a full Bamai agent-loop test). Several popular models advertise a `tools` capability but never emit structured tool calls in practice (`glm4:9b`, `mistral:7b`), or reject tools outright (`gemma3`) — they cannot read your system data through Bamai, so they are deliberately not listed.
 
 Install or switch models from Settings, with `./bamai model pull <name>`, or with `./bamai model use <name>`.
 

@@ -111,7 +111,7 @@ def test_model_list_and_pull_endpoints(db, tmp_path):
         assert models.status_code == 200
         assert models.json()["installed"][1]["name"] == "qwen3:8b"
         assert [item["name"] for item in models.json()["recommended"]] == [
-            "qwen3:4b", "qwen3:8b", "qwen3:14b"
+            "qwen3:4b", "qwen3:8b", "qwen3:14b", "llama3.1:8b"
         ]
         started = client.post("/api/ollama/pull", json={"model": "qwen3:14b"})
         assert started.status_code == 202
