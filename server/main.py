@@ -261,7 +261,8 @@ def create_app(
                 raise HTTPException(
                     status_code=503, detail="无法连接 Ollama 以验证模型"
                 ) from exc
-            if requested_model not in installed:
+            # Ollama 中不带 tag 的名字等价于 :latest（如 gemma3 == gemma3:latest），校验时同样等价
+            if requested_model not in installed and f"{requested_model}:latest" not in installed:
                 raise HTTPException(
                     status_code=422, detail="model 仅可选择已安装的 Ollama 模型"
                 )
@@ -291,7 +292,7 @@ def create_app(
             installed = {item["name"] for item in await active_agent().list_models()}
         except (httpx.HTTPError, OllamaError) as exc:
             raise HTTPException(status_code=503, detail="Ollama 未就绪") from exc
-        if payload.model not in installed:
+        if payload.model not in installed and f"{payload.model}:latest" not in installed:
             raise HTTPException(status_code=404, detail="模型未安装")
         try:
             await active_agent().delete_model(payload.model)

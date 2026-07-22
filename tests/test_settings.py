@@ -17,6 +17,7 @@ class SettingsAgent:
         return [
             {"name": "qwen3:4b", "size": 3_000_000_000},
             {"name": "qwen3:8b", "size": 6_000_000_000},
+            {"name": "gemma3:latest", "size": 3_300_000_000},
         ]
 
     async def delete_model(self, name):
@@ -91,6 +92,8 @@ def test_settings_model_must_be_installed_and_values_are_validated(db, tmp_path)
         assert selected.status_code == 200
         assert selected.json()["model"] == "qwen3:8b"
         assert client.post("/api/settings", json={"model": "missing:1b"}).status_code == 422
+        # 不带 tag 的名字应等价于 :latest（Ollama 语义）
+        assert client.post("/api/settings", json={"model": "gemma3"}).status_code == 200
         assert client.post("/api/settings", json={"temperature": 2}).status_code == 422
         assert client.post("/api/settings", json={"unknown": True}).status_code == 422
 
