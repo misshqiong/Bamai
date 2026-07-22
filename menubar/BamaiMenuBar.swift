@@ -1,5 +1,8 @@
-// Bamai 菜单栏状态应用：轮询 /api/health 显示绿/黄/红圆点，提供打开控制台与启停入口。
-// 服务进程本身由 launchd（com.bamai.app，KeepAlive）守护，本应用只是薄状态层，不监管 uvicorn。
+// Bamai 菜单栏状态应用：轮询 /api/health 显示绿/黄/红圆点，提供打开控制台与启停入口，
+// 并作为服务监工——服务不可达时自动执行 ./bamai start（用户手动停止后不自动拉起）。
+// 之所以由本应用而非 launchd 直接守护脚本：项目常位于 ~/Documents 等 TCC 保护目录，
+// launchd 直接跑脚本会得到 Operation not permitted；而本应用有 App 身份，首次访问会
+// 弹出系统授权框，用户允许一次后其子进程即可读取项目文件。
 // 通过 ./bamai menubar on 构建安装；项目路径在构建时写入 Info.plist 的 BamaiProjectDir。
 import AppKit
 import Foundation
@@ -53,6 +56,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var state: ServiceState = .unreachable
     private var timer: Timer?
+    private var unreachableStreak = 0
+    private var userStopped = false
+    private var bamaiCommandInFlight = false
     private let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 2
@@ -96,6 +102,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func applyState(_ next: ServiceState) {
         state = next
         statusItem.button?.image = dotImage(color: next.color)
+        if next == .unreachable {
+            unreachableStreak += 1
+            // 连续两次不可达（约 10 秒）才拉起，避开正常重启窗口；手动停止后不拉起；
+            // 之后退避为约每分钟一次，避免在授权未通过等长期失败时高频重试
+            if !userStopped, !bamaiCommandInFlight,
+               unreachableStreak == 2 || unreachableStreak % 12 == 0 {
+                runBamai(["start"])
+            }
+        } else {
+            unreachableStreak = 0
+        }
     }
 
     private func dotImage(color: NSColor, diameter: CGFloat = 11) -> NSImage {
@@ -144,9 +161,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSWorkspace.shared.open(baseURL)
     }
 
-    @objc private func startService() { runBamai(["start"]) }
-    @objc private func restartService() { runBamai(["restart"]) }
-    @objc private func stopService() { runBamai(["stop"]) }
+    @objc private func startService() {
+        userStopped = false
+        runBamai(["start"])
+    }
+
+    @objc private func restartService() {
+        userStopped = false
+        runBamai(["restart"])
+    }
+
+    @objc private func stopService() {
+        userStopped = true
+        runBamai(["stop"])
+    }
 
     @objc private func quit() {
         NSApp.terminate(nil)
@@ -154,7 +182,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func runBamai(_ arguments: [String]) {
         let script = projectDir + "/bamai"
-        guard FileManager.default.isExecutableFile(atPath: script) else { return }
+        guard FileManager.default.isExecutableFile(atPath: script), !bamaiCommandInFlight else { return }
+        bamaiCommandInFlight = true
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: script)
@@ -163,7 +192,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             process.standardError = FileHandle.nullDevice
             try? process.run()
             process.waitUntilExit()
-            self?.pollHealth()
+            DispatchQueue.main.async {
+                self?.bamaiCommandInFlight = false
+                self?.pollHealth()
+            }
         }
     }
 }

@@ -322,6 +322,12 @@ autostart_command() {
   local launch_dir="$HOME/Library/LaunchAgents" plist="$HOME/Library/LaunchAgents/com.bamai.app.plist"
   case "$action" in
     on)
+      # TCC 保护目录下 launchd 无法读取脚本（Operation not permitted，退出码 126）
+      case "$PROJECT_DIR" in
+        "$HOME/Documents/"*|"$HOME/Desktop/"*|"$HOME/Downloads/"*)
+          say "注意：项目位于 macOS 保护的文件夹，登录代理可能无法启动服务；建议改用 ./bamai menubar on（菜单栏应用会守护服务，首次弹出授权后即可用）。" "Note: the project is inside a macOS-protected folder, so the login agent may fail to start the service; prefer ./bamai menubar on (the menu bar app supervises the service after a one-time permission prompt)."
+          ;;
+      esac
       mkdir -p "$launch_dir"
       local with_ai_xml=""
       [[ "$with_ai" == true ]] && with_ai_xml='      <string>--with-ai</string>'
