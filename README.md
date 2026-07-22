@@ -59,15 +59,16 @@ Alternatively, `./bamai autostart on` installs a plain login agent with crash re
 
 Both are reversible with `./bamai menubar off` and `./bamai autostart off`.
 
-AI is optional. To enable it:
+AI is optional, and once Ollama is installed everything else is automatic:
 
 ```bash
 brew install ollama
-ollama pull qwen3:4b
-./bamai restart --with-ai
+./bamai restart
 ```
 
-When Ollama was installed with Homebrew, `--with-ai` registers it as a `brew services` login service once, so Ollama also stays available after reboots and you never need `--with-ai` again.
+On every start Bamai now ensures the AI stack itself: it launches Ollama when it is not running (registering it as a `brew services` login service when Homebrew manages it, so it survives reboots), and if the configured model is missing the server downloads it automatically in the background — watch the progress on the Settings page, or set `BAMAI_AUTO_PULL=0` to opt out. The `--with-ai` flag is no longer needed and is kept only for compatibility.
+
+Bamai never routes its local Ollama requests through system or environment HTTP proxies (Clash, Surge, etc.), so AI keeps working even in proxied environments and in launchd-spawned processes that lack `NO_PROXY`.
 
 ## Raycast shortcuts
 

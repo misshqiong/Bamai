@@ -155,3 +155,38 @@ def test_event_diagnosis_updates_database_without_real_ollama(db):
     finally:
         diagnoser.close()
     assert db.list_events()[0]["ai_analysis"].startswith("CPU 高负载")
+
+
+def test_default_http_client_never_uses_env_proxies(tmp_path, monkeypatch):
+    """本地 Ollama 请求必须绕开系统/环境代理（launchd 环境无 NO_PROXY，代理会回 502）。"""
+    captured = {}
+    real_async_client = httpx.AsyncClient
+
+    class RecordingClient(real_async_client):
+        def __init__(self, *args, **kwargs):
+            captured.update(kwargs)
+            kwargs["transport"] = httpx.MockTransport(
+                lambda request: httpx.Response(200, json={"models": []})
+            )
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", RecordingClient)
+    client = OllamaClient(FakeTools(), settings_store=SettingsStore(tmp_path / "config.json"))
+    asyncio.run(client.list_models())
+    assert captured.get("trust_env") is False
+
+
+def test_model_pull_never_uses_env_proxies(monkeypatch):
+    from server.model_pull import ModelPullManager
+
+    captured = {}
+
+    def fake_stream(method, url, **kwargs):
+        captured.update(kwargs)
+        raise RuntimeError("stop before any network access")
+
+    monkeypatch.setattr("server.model_pull.httpx.stream", fake_stream)
+    manager = ModelPullManager()
+    manager._pull("qwen3:4b")
+    assert captured.get("trust_env") is False
+    assert manager.status()["status"] == "error"

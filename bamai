@@ -18,7 +18,7 @@ die() { say "$1" "$2" >&2; exit 1; }
 usage() {
   say "用法：./bamai <命令> [选项]" "Usage: ./bamai <command> [options]"
   say "命令：start | stop | restart | status | logs | model | autostart | menubar" "Commands: start | stop | restart | status | logs | model | autostart | menubar"
-  say "选项：--foreground（前台运行），--with-ai（同时管理 Ollama）" "Options: --foreground (stay in foreground), --with-ai (also manage Ollama)"
+  say "选项：--foreground（前台运行）；AI 现默认自动管理，--with-ai 仅为兼容保留" "Options: --foreground (stay in foreground); AI is now managed automatically, --with-ai kept for compatibility"
 }
 
 ensure_data_dir() { mkdir -p "$DATA_DIR"; }
@@ -63,7 +63,7 @@ prepare_runtime() {
 
 ollama_ready() { curl --fail --silent --max-time 2 "$OLLAMA_URL/api/tags" >/dev/null 2>&1; }
 
-start_ai() {
+ensure_ai() {
   local model
   model="$(configured_model)"
   if ! command -v ollama >/dev/null 2>&1; then
@@ -103,23 +103,8 @@ start_ai() {
     return 0
   fi
   if ! ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -Fxq "$model"; then
-    if [[ -t 0 ]]; then
-      say "模型 $model 尚未安装，是否现在下载？[y/N]" "Model $model is not installed. Download it now? [y/N]"
-      local pull_answer
-      read -r pull_answer
-      if [[ "$pull_answer" =~ ^[Yy]$ ]]; then
-        say "正在下载模型 $model…" "Downloading model $model…"
-        if ollama pull "$model" >/dev/null 2>&1; then
-          say "模型 $model 下载完成。" "Model $model downloaded."
-        else
-          say "模型下载失败；可稍后运行 ./bamai model pull $model。" "Model download failed; you can run ./bamai model pull $model later."
-        fi
-      else
-        say "可稍后运行：./bamai model pull $model" "You can run this later: ./bamai model pull $model"
-      fi
-    else
-      say "模型 $model 尚未安装；请运行：./bamai model pull $model" "Model $model is not installed; run: ./bamai model pull $model"
-    fi
+    # 下载交给服务端启动时的自动后台拉取，避免与其重复下载
+    say "模型 $model 尚未安装；服务启动后会自动在后台下载（进度见设置页）。" "Model $model is not installed; it will download automatically in the background after the service starts (see Settings for progress)."
   else
     say "Ollama 与模型 $model 已就绪。" "Ollama and model $model are ready."
   fi
@@ -146,7 +131,8 @@ start_command() {
   fi
   [[ -f "$PID_FILE" ]] && rm -f "$PID_FILE"
   prepare_runtime
-  [[ "$with_ai" == true ]] && start_ai
+  # AI 默认自动管理：Ollama 已安装则确保其运行（--with-ai 保留为兼容 no-op）
+  ensure_ai
   cd "$PROJECT_DIR"
   if [[ "$foreground" == true ]]; then
     say "Bamai 正在前台运行：$BASE_URL" "Bamai is running in the foreground: $BASE_URL"
