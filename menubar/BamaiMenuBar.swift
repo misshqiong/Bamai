@@ -71,6 +71,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // 主动读一次项目目录：项目在 TCC 保护目录内时，让系统授权框在启动时立即出现，
+        // 而不是等到后台拉起服务时才静默失败
+        if !projectDir.isEmpty {
+            _ = try? FileManager.default.contentsOfDirectory(atPath: projectDir)
+        }
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         let menu = NSMenu()
         menu.delegate = self
