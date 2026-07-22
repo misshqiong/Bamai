@@ -27,6 +27,7 @@ Packet captures can still contain local addresses, ports, and protocol metadata.
 - Plugin-style diagnostic toolbox with nine built-in probes.
 - Bounded, header-only packet capture with protocol and top-session summaries.
 - A bilingual `bamai` CLI for daemon, log, model, and autostart management.
+- An optional menu bar health icon and Raycast script commands for one-keystroke access.
 
 ## Requirements
 
@@ -42,16 +43,35 @@ cd bamai
 ./bamai start
 ```
 
-Open <http://127.0.0.1:8737>. The first start creates `.venv`, installs dependencies, and downloads the local chart asset. Run `./bamai status`, `./bamai logs`, or `./bamai stop` to manage the service.
+Open <http://127.0.0.1:8737>. The first start creates `.venv`, installs dependencies, and downloads the local chart asset. Later starts skip the dependency check unless `requirements.txt` changed, so they are instant. Run `./bamai status`, `./bamai logs`, or `./bamai stop` to manage the service.
+
+## Set up once, forget the service
+
+After the first start, run these two commands so you never have to start Bamai manually again:
+
+```bash
+./bamai autostart on
+./bamai menubar on
+```
+
+- `autostart on` installs a login agent that starts the service at login and restarts it automatically if it crashes.
+- `menubar on` builds and installs a tiny menu bar icon (requires the Xcode Command Line Tools). The dot mirrors your Mac's health — green, yellow, red, or gray when the service is down — and the menu offers Open Dashboard, start/restart/stop.
+
+Both are reversible with `./bamai autostart off` and `./bamai menubar off`.
 
 AI is optional. To enable it:
 
 ```bash
 brew install ollama
-ollama serve
 ollama pull qwen3:4b
 ./bamai restart --with-ai
 ```
+
+When Ollama was installed with Homebrew, `--with-ai` registers it as a `brew services` login service once, so Ollama also stays available after reboots and you never need `--with-ai` again.
+
+## Raycast shortcuts
+
+The `raycast/` directory contains Script Commands: **Open Bamai** (starts the service if needed and opens the dashboard), **Bamai Status**, and **Restart Bamai**. In Raycast, add the `raycast/` folder under Extensions → Script Commands → Add Directories, then optionally bind a global hotkey to *Open Bamai*.
 
 The legacy `./run.sh` entry point remains available and starts Bamai in the foreground.
 

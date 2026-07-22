@@ -27,6 +27,7 @@ Bamai 默认完全在本机运行：
 - 插件式诊断工具箱，内置九个探针。
 - 有界、仅保留包头的抓包，以及协议和 Top 会话汇总。
 - 双语 `bamai` CLI，可管理守护进程、日志、模型和开机启动。
+- 可选的菜单栏健康图标与 Raycast 脚本命令，一键直达。
 
 ## 环境要求
 
@@ -42,16 +43,35 @@ cd bamai
 ./bamai start
 ```
 
-打开 <http://127.0.0.1:8737>。首次启动会创建 `.venv`、安装依赖并下载本地图表资源。使用 `./bamai status`、`./bamai logs` 和 `./bamai stop` 管理服务。
+打开 <http://127.0.0.1:8737>。首次启动会创建 `.venv`、安装依赖并下载本地图表资源；之后只要 `requirements.txt` 没有变化就跳过依赖检查，启动是瞬时的。使用 `./bamai status`、`./bamai logs` 和 `./bamai stop` 管理服务。
+
+## 设置一次，从此忘掉启动
+
+首次启动成功后，运行下面两条命令，以后就再也不用手动启动 Bamai：
+
+```bash
+./bamai autostart on
+./bamai menubar on
+```
+
+- `autostart on` 安装登录代理：开机自动启动服务，服务异常退出时自动拉起。
+- `menubar on` 构建并安装一个很小的菜单栏图标（需要 Xcode 命令行工具）。圆点颜色对应 Mac 健康状态——绿/黄/红，服务未运行时为灰色；菜单里可以打开控制台、启动/重启/停止服务。
+
+两者都可以随时撤销：`./bamai autostart off`、`./bamai menubar off`。
 
 AI 是可选功能。启用方式：
 
 ```bash
 brew install ollama
-ollama serve
 ollama pull qwen3:4b
 ./bamai restart --with-ai
 ```
+
+如果 Ollama 是通过 Homebrew 安装的，`--with-ai` 会一次性把它注册为 `brew services` 登录服务，重启后 Ollama 依然可用，以后无需再加 `--with-ai`。
+
+## Raycast 快捷入口
+
+`raycast/` 目录内置了三个 Script Command：**Open Bamai**（服务未运行则先启动，再打开控制台）、**Bamai Status**、**Restart Bamai**。在 Raycast 的 Extensions → Script Commands → Add Directories 中添加 `raycast/` 目录，然后可以给 *Open Bamai* 绑定全局快捷键。
 
 旧的 `./run.sh` 入口仍然保留，用于前台启动 Bamai。
 

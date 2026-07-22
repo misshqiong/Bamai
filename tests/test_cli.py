@@ -12,6 +12,9 @@ def test_cli_scripts_have_valid_bash_syntax_and_compatibility_wrapper():
     subprocess.run(["bash", "-n", "run.sh"], cwd=ROOT, check=True)
     subprocess.run(["bash", "-n", "scripts/enable-capture.sh"], cwd=ROOT, check=True)
     subprocess.run(["bash", "-n", "scripts/disable-capture.sh"], cwd=ROOT, check=True)
+    for raycast_script in sorted((ROOT / "raycast").glob("*.sh")):
+        subprocess.run(["bash", "-n", str(raycast_script)], cwd=ROOT, check=True)
+        assert os.access(raycast_script, os.X_OK)
     assert os.access(ROOT / "bamai", os.X_OK)
     lines = (ROOT / "run.sh").read_text().splitlines()
     assert lines == [
@@ -29,6 +32,6 @@ def test_cli_exposes_all_commands_and_bilingual_output(tmp_path):
         capture_output=True,
         check=True,
     )
-    for command in ("start", "stop", "restart", "status", "logs", "model", "autostart"):
+    for command in ("start", "stop", "restart", "status", "logs", "model", "autostart", "menubar"):
         assert command in result.stdout
     assert all(" / " in line for line in result.stdout.splitlines())
