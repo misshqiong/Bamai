@@ -17,9 +17,10 @@ RECOMMENDED_MODELS = [
     {"name": "qwen3:4b", "size_gb": 3, "memory_gb": 8},
     {"name": "qwen3:8b", "size_gb": 6, "memory_gb": 16},
     {"name": "qwen3:14b", "size_gb": 10, "memory_gb": 24},
-    # 注意：glm4:9b 虽然声明 tools 能力，但 Ollama 模板下实测从不发出 tool_calls
-    # （会声称"无法访问外部系统"并编造数据），不能用于 Bamai 的工具循环，故不推荐。
-    {"name": "mistral:7b", "size_gb": 4, "memory_gb": 8},
+    # 注意：glm4:9b 与 mistral:7b 虽然都声明 tools 能力，但 Ollama 模板下中文场景实测
+    # 均不发出结构化 tool_calls（glm4 声称"无法访问外部系统"并编造数据；mistral 把工具
+    # 调用写成代码文本），不能用于 Bamai 的工具循环，故只推荐实测可靠的 qwen3 系列。
+    # 新增推荐前必须实测：单工具直连 Ollama + Bamai 完整链路两个测试都要求发出 tool_calls。
 ]
 
 
