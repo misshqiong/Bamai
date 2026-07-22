@@ -400,8 +400,12 @@ menubar_command() {
         printf '%s\n' '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
         printf '%s\n' '<plist version="1.0"><dict>'
         printf '%s\n' '  <key>Label</key><string>com.bamai.menubar</string>'
+        # 经 open/LaunchServices 启动而非直接 exec 二进制：应用获得正规 App 身份，
+        # 访问 TCC 保护目录（如 ~/Documents 内的项目）时系统才会弹授权框
         printf '%s\n' '  <key>ProgramArguments</key><array>'
-        printf '      <string>%s</string>\n' "$binary"
+        printf '%s\n' '      <string>/usr/bin/open</string>'
+        printf '%s\n' '      <string>-g</string>' '      <string>-W</string>' '      <string>-a</string>'
+        printf '      <string>%s</string>\n' "$app_dir"
         printf '%s\n' '  </array>'
         printf '%s\n' '  <key>RunAtLoad</key><true/>'
         printf '%s\n' '  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>'
