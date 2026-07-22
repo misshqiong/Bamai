@@ -292,8 +292,14 @@ pytest 单测（不依赖 Ollama、不依赖真实系统状态）：
   SHA-256 指纹缓存于 `.venv/.deps-stamp`，未变化则跳过 pip）→ 以守护方式启动 uvicorn
   （nohup，pid 写 `~/.bamai/bamai.pid`，日志 `~/.bamai/bamai.log`）→ `open http://127.0.0.1:8737`。
   已在运行则提示并直接打开浏览器。`--foreground` 前台运行（开发用）。
-  `--with-ai`：检测 ollama 与模型，缺失时打印引导（检测到 brew 时询问是否代为安装/拉取）；
-  brew 安装的 Ollama 未运行时注册为 `brew services` 登录服务（常驻自愈），否则 nohup 兜底。
+  AI 默认自动管理（`--with-ai` 仅为兼容保留）：已安装 ollama 时确保其运行——brew 安装的
+  注册为 `brew services` 登录服务（常驻自愈），否则 nohup 兜底；未安装时交互式询问是否
+  代为安装；模型缺失只提示，下载交给服务端启动时的自动后台拉取（避免重复下载）。
+  服务端 lifespan：Ollama 可达且配置模型缺失时自动调用 ModelPullManager 后台下载
+  （`BAMAI_AUTO_PULL=0` 关闭；测试经 collector_enabled=False 天然豁免）。
+  所有对 Ollama 的 httpx 请求 `trust_env=False`（本地请求绝不走系统/环境代理——macOS 上
+  httpx 会经 urllib 读到系统代理，launchd 进程无 NO_PROXY 时 loopback 请求会被代理吃掉
+  返回 502）；默认地址用 `127.0.0.1:11434` 而非 localhost，避免 IPv6 歧义。
 - `stop`：读 pid 优雅终止；`restart`；`status`：进程/端口/Ollama/模型四项状态；`logs`：tail -f。
 - `model list|use <name>|pull <name>`：调 `/api/settings` 与 Ollama API 的薄封装。
 - `autostart on|off`：生成/移除 `~/Library/LaunchAgents/com.bamai.app.plist`；

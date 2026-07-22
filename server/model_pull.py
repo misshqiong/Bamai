@@ -60,6 +60,7 @@ class ModelPullManager:
                 f"{self.base_url}/api/pull",
                 json={"model": model, "stream": True},
                 timeout=None,
+                trust_env=False,  # 本地 Ollama 请求绝不走系统/环境代理
             ) as response:
                 response.raise_for_status()
                 for line in response.iter_lines():

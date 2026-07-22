@@ -55,7 +55,8 @@ MAX_CHART_POINTS = 500
 
 DEFAULT_DISK_MOUNTS = ("/", "/System/Volumes/Data")
 
-OLLAMA_BASE_URL = os.environ.get("BAMAI_OLLAMA_URL", "http://localhost:11434").rstrip("/")
+# 默认用 127.0.0.1 而非 localhost，避免 IPv6 解析歧义
+OLLAMA_BASE_URL = os.environ.get("BAMAI_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
 OLLAMA_MODEL = "qwen3:4b"
 OLLAMA_CHAT_TIMEOUT_SECONDS = 120
 OLLAMA_HEALTH_TIMEOUT_SECONDS = 3

@@ -76,6 +76,19 @@ EXPLAIN_TIMEOUT_MESSAGES = {
 }
 
 
+async def auto_pull_missing_model(agent: OllamaClient, pull_manager: ModelPullManager) -> None:
+    """Ollama 可达但配置的模型缺失时，自动开始后台下载（进度可在设置页查看）。"""
+    try:
+        status = await agent.status()
+    except Exception:  # 探测失败绝不能影响服务启动
+        return
+    if status["available"] and not status["model_pulled"]:
+        if pull_manager.start(status["model"]):
+            logger.info(
+                "模型 %s 缺失，已自动开始后台下载（BAMAI_AUTO_PULL=0 可关闭）", status["model"]
+            )
+
+
 def create_app(
     database: Database | None = None,
     *,
@@ -122,6 +135,10 @@ def create_app(
             collector = Collector(application.state.db, rules)
             application.state.collector = collector
             collector.start()
+        if collector_enabled and os.environ.get("BAMAI_AUTO_PULL") != "0":
+            application.state.auto_pull_task = asyncio.create_task(
+                auto_pull_missing_model(application.state.agent, application.state.pull_manager)
+            )
         logger.info("Bamai 已启动: http://%s:%s", config.HOST, config.PORT)
         yield
         if application.state.collector is not None:

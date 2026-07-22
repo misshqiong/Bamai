@@ -59,15 +59,16 @@ cd bamai
 
 两者都可以随时撤销：`./bamai menubar off`、`./bamai autostart off`。
 
-AI 是可选功能。启用方式：
+AI 是可选功能，装好 Ollama 后其余全部自动：
 
 ```bash
 brew install ollama
-ollama pull qwen3:4b
-./bamai restart --with-ai
+./bamai restart
 ```
 
-如果 Ollama 是通过 Homebrew 安装的，`--with-ai` 会一次性把它注册为 `brew services` 登录服务，重启后 Ollama 依然可用，以后无需再加 `--with-ai`。
+现在每次启动 Bamai 都会自动照看 AI 链路：Ollama 未运行时自动拉起（Homebrew 安装的会注册为 `brew services` 登录服务，重启不丢）；配置的模型缺失时服务端自动在后台下载——进度可在设置页查看，也可用 `BAMAI_AUTO_PULL=0` 关闭。`--with-ai` 参数不再需要，仅为兼容保留。
+
+Bamai 对本地 Ollama 的请求永远不走系统或环境 HTTP 代理（Clash、Surge 等），因此在开启代理的环境、以及缺少 `NO_PROXY` 的 launchd 进程里 AI 都能正常工作。
 
 ## Raycast 快捷入口
 

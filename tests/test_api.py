@@ -108,3 +108,33 @@ def test_chat_gracefully_returns_503_when_ollama_is_unavailable(db):
         })
         assert response.status_code == 503
         assert "brew install ollama && ollama pull qwen3:4b" in response.json()["detail"]
+
+
+def test_auto_pull_starts_only_when_ollama_up_and_model_missing():
+    import asyncio
+
+    from server.main import auto_pull_missing_model
+
+    class Agent:
+        def __init__(self, available, pulled):
+            self._status = {"available": available, "model_pulled": pulled, "model": "qwen3:4b"}
+
+        async def status(self):
+            return self._status
+
+    class Manager:
+        def __init__(self):
+            self.started = []
+
+        def start(self, model):
+            self.started.append(model)
+            return True
+
+    missing = Manager()
+    asyncio.run(auto_pull_missing_model(Agent(True, False), missing))
+    assert missing.started == ["qwen3:4b"]
+
+    for agent in (Agent(True, True), Agent(False, False)):
+        untouched = Manager()
+        asyncio.run(auto_pull_missing_model(agent, untouched))
+        assert untouched.started == []

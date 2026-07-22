@@ -185,7 +185,10 @@ class OllamaClient:
         if self.http_client is not None:
             response = await self.http_client.request(method, f"{self.base_url}{path}", **kwargs)
         else:
-            async with httpx.AsyncClient() as client:
+            # trust_env=False：本地 Ollama 请求绝不走系统/环境代理。macOS 上 httpx 会经
+            # urllib 读到系统代理（如 Clash），而 launchd 启动的进程没有 NO_PROXY 环境
+            # 变量，loopback 请求会被送进代理并得到 502
+            async with httpx.AsyncClient(trust_env=False) as client:
                 response = await client.request(method, f"{self.base_url}{path}", **kwargs)
         response.raise_for_status()
         return response
