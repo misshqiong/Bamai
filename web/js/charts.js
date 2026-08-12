@@ -67,6 +67,29 @@ export class HistoryChart {
   }
 }
 
+export class AppHistoryChart {
+  constructor() {
+    this.chart = echarts.init(document.querySelector("#app-history-chart"));
+    this.points = [];
+    addEventListener("resize", () => this.resize());
+  }
+  set(points) {
+    this.points = points;
+    const option = baseOption([
+      {...line(t("chart.cpu"), palette.cyan), yAxisIndex: 0, data: points.map(point => [point.ts * 1000, point.cpu_percent])},
+      {...line(t("chart.memory"), palette.violet), yAxisIndex: 1, data: points.map(point => [point.ts * 1000, point.memory_rss])},
+    ], value => formatNumber(value, {maximumFractionDigits: 1}));
+    option.grid.right = 68;
+    option.yAxis = [
+      {type: "value", ...axis, axisLabel: {...axis.axisLabel, formatter: value => `${formatNumber(value)}%`}},
+      {type: "value", ...axis, axisLabel: {...axis.axisLabel, formatter: formatBytes}},
+    ];
+    this.chart.setOption(option, true);
+  }
+  resize() { this.chart.resize(); }
+  translate() { this.set(this.points); }
+}
+
 export function formatBytes(value) {
   if (value == null) return "--";
   const units = ["B", "KB", "MB", "GB", "TB"];

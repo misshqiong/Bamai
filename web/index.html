@@ -33,6 +33,7 @@
 
       <nav class="tabs" aria-label="主视图">
         <button class="tab active" data-view="dashboard" data-i18n="nav.dashboard">仪表盘</button>
+        <button class="tab" data-view="apps" data-i18n="nav.apps">应用</button>
         <button class="tab" data-view="search" data-i18n="nav.search">文件搜索</button>
         <button class="tab" data-view="toolbox" data-i18n="nav.toolbox">工具箱</button>
         <button class="tab" data-view="settings" data-i18n="nav.settings">设置</button>
@@ -87,6 +88,51 @@
             <div id="events-list" class="events-list"><p class="empty" data-i18n="events.empty">暂无异常事件</p></div>
           </section>
         </div>
+      </section>
+
+      <section id="apps-view" class="view">
+        <section class="panel">
+          <div class="panel-heading">
+            <div><p class="eyebrow" data-i18n="apps.eyebrow">应用聚合</p><h2 data-i18n="apps.title">应用资源使用</h2></div>
+          </div>
+          <div class="table-wrap apps-table-wrap">
+            <table class="apps-table">
+              <thead><tr>
+                <th data-i18n="apps.name">应用</th>
+                <th><button class="table-sort active" data-app-sort="cpu" data-i18n="apps.cpu">CPU</button></th>
+                <th><button class="table-sort" data-app-sort="memory" data-i18n="apps.memory">内存</button></th>
+                <th><button class="table-sort" data-app-sort="network" data-i18n="apps.network">网络 ↑↓</button></th>
+                <th data-i18n="apps.processCount">进程数</th>
+              </tr></thead>
+              <tbody id="apps-body"><tr><td class="loading" colspan="5" data-i18n="apps.loading">正在读取应用…</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="app-detail" class="panel hidden">
+          <div class="panel-heading">
+            <div><p class="eyebrow" data-i18n="apps.detailEyebrow">应用详情 · 过去 1 小时</p><h2 id="app-detail-title"></h2></div>
+          </div>
+          <div><h3 data-i18n="apps.history">CPU / 内存历史</h3><div id="app-history-chart" class="chart history-chart"></div></div>
+          <div class="app-detail-grid">
+            <section>
+              <h3 data-i18n="apps.processes">子进程</h3>
+              <div class="table-wrap app-detail-table"><table><thead><tr>
+                <th data-i18n="apps.processName">名称</th><th data-i18n="apps.pid">PID</th>
+                <th data-i18n="apps.cpu">CPU</th><th data-i18n="apps.memory">内存</th>
+              </tr></thead><tbody id="app-process-body"></tbody></table></div>
+            </section>
+            <section>
+              <h3 data-i18n="apps.connections">连接</h3>
+              <p class="connection-mode" data-i18n="apps.connectionMode">基础模式 · IP 级，部分域名经反查获得</p>
+              <div class="table-wrap app-detail-table"><table><thead><tr>
+                <th data-i18n="apps.destination">域名 / IP:端口</th>
+                <th data-i18n="apps.network">网络 ↑↓</th><th data-i18n="apps.rtt">RTT</th>
+                <th data-i18n="apps.proxy">代理</th>
+              </tr></thead><tbody id="app-connection-body"></tbody></table></div>
+            </section>
+          </div>
+        </section>
       </section>
 
       <section id="search-view" class="view">

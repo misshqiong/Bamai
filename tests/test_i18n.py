@@ -77,3 +77,15 @@ def test_toolbox_keys_exist_in_both_languages():
     }
     for language in ("zh", "en"):
         assert required <= set(dictionaries[language])
+
+
+def test_apps_view_keys_exist_in_both_languages():
+    dictionaries = load_dictionaries()
+    required = {
+        "nav.apps", "apps.title", "apps.name", "apps.cpu", "apps.memory",
+        "apps.network", "apps.processCount", "apps.background", "apps.history",
+        "apps.processes", "apps.connections", "apps.connectionMode",
+        "apps.destination", "apps.rtt", "apps.proxy",
+    }
+    for language in ("zh", "en"):
+        assert required <= set(dictionaries[language])

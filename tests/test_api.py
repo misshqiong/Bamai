@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from fastapi.testclient import TestClient
 
 from server.agent.ollama_client import ChatResult
@@ -138,3 +140,66 @@ def test_auto_pull_starts_only_when_ollama_up_and_model_missing():
         untouched = Manager()
         asyncio.run(auto_pull_missing_model(agent, untouched))
         assert untouched.started == []
+
+
+def test_apps_list_and_detail_endpoints(db, monkeypatch):
+    now = int(time.time())
+    live = [
+        {
+            "pid": 10, "ppid": 0, "name": "Chrome", "cpu_percent": 12.5,
+            "memory_rss": 1000, "cmdline": "chrome",
+            "exe": "/Applications/Google Chrome.app/Contents/MacOS/Chrome",
+        },
+        {
+            "pid": 11, "ppid": 10, "name": "Chrome Helper", "cpu_percent": 2.5,
+            "memory_rss": 500, "cmdline": "helper", "exe": "",
+        },
+        {
+            "pid": 20, "ppid": 0, "name": "backupd", "cpu_percent": 1.0,
+            "memory_rss": 250, "cmdline": "backupd", "exe": "/usr/libexec/backupd",
+        },
+    ]
+    monkeypatch.setattr("server.main.list_application_processes", lambda: live)
+    db.insert_app_snapshots(now, [
+        {
+            "app": "Google Chrome", "kind": "app", "cpu_percent": 15,
+            "memory_rss": 1500, "proc_count": 2, "up_bps": 100, "down_bps": 500,
+        },
+        {
+            "app": "backupd", "kind": "background", "cpu_percent": 1,
+            "memory_rss": 250, "proc_count": 1, "up_bps": 900, "down_bps": 100,
+        },
+    ])
+    db.insert_app_connections(now, [{
+        "app": "Google Chrome", "remote_ip": "1.1.1.1", "remote_port": 443,
+        "domain": "one.one.one.one", "proto": "tcp", "up_bps": 100,
+        "down_bps": 500, "rtt_ms": 12, "via_proxy": 0, "proxy_name": None,
+    }])
+
+    with TestClient(create_app(db, collector_enabled=False, agent_client=FakeAgent())) as client:
+        response = client.get("/api/apps", params={"sort": "network", "limit": 2})
+        assert response.status_code == 200
+        assert [item["app"] for item in response.json()["apps"]] == [
+            "backupd", "Google Chrome",
+        ]
+        chrome = response.json()["apps"][1]
+        assert chrome["proc_count"] == 2
+        assert chrome["down_bps"] == 500
+
+        detail = client.get("/api/apps/Google%20Chrome/detail", params={"window": 3600})
+        assert detail.status_code == 200
+        body = detail.json()
+        assert body["app"] == "Google Chrome"
+        assert [process["pid"] for process in body["processes"]] == [10, 11]
+        assert body["history"][0]["cpu_percent"] == 15
+        assert body["connections"][0] == {
+            "domain": "one.one.one.one", "remote_ip": "1.1.1.1", "port": 443,
+            "up_bps": 100.0, "down_bps": 500.0, "rtt_ms": 12.0,
+            "via_proxy": 0, "proxy_name": None,
+        }
+
+        assert client.get("/api/apps", params={"sort": "invalid"}).status_code == 422
+        invalid_window = client.get(
+            "/api/apps/Google%20Chrome/detail", params={"window": 59}
+        )
+        assert invalid_window.status_code == 422

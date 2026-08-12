@@ -83,6 +83,21 @@ class Database:
             up_bps REAL NOT NULL, down_bps REAL NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_process_net_ts ON process_net(ts);
+        CREATE TABLE IF NOT EXISTS app_snapshots(
+            ts INTEGER NOT NULL, app TEXT NOT NULL, kind TEXT NOT NULL,
+            cpu_percent REAL NOT NULL, memory_rss INTEGER NOT NULL,
+            proc_count INTEGER NOT NULL, up_bps REAL NOT NULL, down_bps REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_app_snapshots_ts ON app_snapshots(ts);
+        CREATE INDEX IF NOT EXISTS idx_app_snapshots_app ON app_snapshots(app, ts);
+        CREATE TABLE IF NOT EXISTS app_connections(
+            ts INTEGER NOT NULL, app TEXT NOT NULL, remote_ip TEXT NOT NULL,
+            remote_port INTEGER NOT NULL, domain TEXT, proto TEXT NOT NULL,
+            up_bps REAL NOT NULL, down_bps REAL NOT NULL,
+            rtt_ms REAL, via_proxy INTEGER NOT NULL DEFAULT 0, proxy_name TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_app_connections_ts ON app_connections(ts);
+        CREATE INDEX IF NOT EXISTS idx_app_connections_app ON app_connections(app, ts);
         CREATE TABLE IF NOT EXISTS disk_usage(
             ts INTEGER NOT NULL, mount TEXT NOT NULL, total INTEGER NOT NULL,
             used INTEGER NOT NULL, percent REAL NOT NULL
@@ -143,6 +158,45 @@ class Database:
             return
         with self._write_lock, self.connect() as conn:
             conn.executemany("INSERT INTO process_net VALUES(?,?,?,?,?)", values)
+
+    def insert_app_snapshots(
+        self, ts: int, rows: Iterable[Mapping[str, Any]]
+    ) -> None:
+        values = [
+            (
+                ts, str(row["app"]), str(row["kind"]),
+                float(row["cpu_percent"]), int(row["memory_rss"]),
+                int(row["proc_count"]), float(row["up_bps"]),
+                float(row["down_bps"]),
+            )
+            for row in rows
+        ]
+        if not values:
+            return
+        with self._write_lock, self.connect() as conn:
+            conn.executemany(
+                "INSERT INTO app_snapshots VALUES(?,?,?,?,?,?,?,?)", values
+            )
+
+    def insert_app_connections(
+        self, ts: int, rows: Iterable[Mapping[str, Any]]
+    ) -> None:
+        values = [
+            (
+                ts, str(row["app"]), str(row["remote_ip"]),
+                int(row["remote_port"]), row.get("domain"), str(row["proto"]),
+                float(row["up_bps"]), float(row["down_bps"]),
+                float(row["rtt_ms"]) if row.get("rtt_ms") is not None else None,
+                int(bool(row.get("via_proxy"))), row.get("proxy_name"),
+            )
+            for row in rows
+        ]
+        if not values:
+            return
+        with self._write_lock, self.connect() as conn:
+            conn.executemany(
+                "INSERT INTO app_connections VALUES(?,?,?,?,?,?,?,?,?,?,?)", values
+            )
 
     def insert_disk_usage(self, ts: int, rows: Iterable[Mapping[str, Any]]) -> None:
         values = [
@@ -262,6 +316,70 @@ class Database:
             rows = conn.execute(
                 "SELECT * FROM process_net WHERE ts=? ORDER BY (up_bps+down_bps) DESC",
                 (latest,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def latest_app_snapshots(self) -> list[dict[str, Any]]:
+        with self.connect(read_only=True) as conn:
+            latest = conn.execute("SELECT MAX(ts) FROM app_snapshots").fetchone()[0]
+            if latest is None:
+                return []
+            rows = conn.execute(
+                "SELECT * FROM app_snapshots WHERE ts=? "
+                "ORDER BY cpu_percent DESC, memory_rss DESC",
+                (latest,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def app_history(
+        self,
+        app: str,
+        start: int,
+        end: int,
+        max_points: int = config.MAX_CHART_POINTS,
+    ) -> list[dict[str, Any]]:
+        if end < start:
+            raise ValueError("end 必须大于等于 start")
+        max_points = max(1, min(int(max_points), 5000))
+        with self.connect(read_only=True) as conn:
+            rows = conn.execute(
+                "SELECT * FROM app_snapshots "
+                "WHERE app=? AND ts BETWEEN ? AND ? ORDER BY ts",
+                (app, int(start), int(end)),
+            ).fetchall()
+        points = [dict(row) for row in rows]
+        if len(points) <= max_points:
+            return points
+        size = math.ceil(len(points) / max_points)
+        compact: list[dict[str, Any]] = []
+        for offset in range(0, len(points), size):
+            group = points[offset:offset + size]
+            compact.append({
+                "ts": group[0]["ts"],
+                "app": app,
+                "kind": group[-1]["kind"],
+                "cpu_percent": sum(row["cpu_percent"] for row in group) / len(group),
+                "memory_rss": int(sum(row["memory_rss"] for row in group) / len(group)),
+                "proc_count": int(round(sum(row["proc_count"] for row in group) / len(group))),
+                "up_bps": sum(row["up_bps"] for row in group) / len(group),
+                "down_bps": sum(row["down_bps"] for row in group) / len(group),
+            })
+        return compact
+
+    def latest_app_connections(
+        self, app: str, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit), 500))
+        with self.connect(read_only=True) as conn:
+            latest = conn.execute(
+                "SELECT MAX(ts) FROM app_connections WHERE app=?", (app,)
+            ).fetchone()[0]
+            if latest is None:
+                return []
+            rows = conn.execute(
+                "SELECT * FROM app_connections WHERE app=? AND ts=? "
+                "ORDER BY (up_bps+down_bps) DESC LIMIT ?",
+                (app, latest, limit),
             ).fetchall()
         return [dict(row) for row in rows]
 
@@ -385,6 +503,8 @@ class Database:
             process_cutoff = now - config.PROCESS_RETENTION_SECONDS
             conn.execute("DELETE FROM process_snapshots WHERE ts < ?", (process_cutoff,))
             conn.execute("DELETE FROM process_net WHERE ts < ?", (process_cutoff,))
+            conn.execute("DELETE FROM app_snapshots WHERE ts < ?", (process_cutoff,))
+            conn.execute("DELETE FROM app_connections WHERE ts < ?", (process_cutoff,))
             conn.execute(
                 "DELETE FROM disk_usage WHERE ts < ?", (now - config.DISK_RETENTION_SECONDS,)
             )

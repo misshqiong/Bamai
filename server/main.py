@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import re
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
@@ -26,6 +27,7 @@ from .agent.ollama_client import (
 )
 from .agent.prompts import build_health_explanation_prompt, build_probe_explanation_prompt
 from .agent.tools import ToolExecutor
+from .apps import group_captured_processes, list_application_processes
 from .collector import Collector, list_processes
 from .db import METRIC_COLUMNS, Database
 from .localization import LanguageState
@@ -254,6 +256,79 @@ def create_app(
     def processes_net() -> dict:
         items = active_db().latest_process_net()
         return {"items": items, "ts": items[0]["ts"] if items else None}
+
+    @application.get("/api/apps")
+    def apps(
+        sort: Literal["cpu", "memory", "network"] = "cpu",
+        limit: int = Query(30, ge=1, le=100),
+    ) -> dict:
+        groups = group_captured_processes(list_application_processes())
+        latest_network = {
+            row["app"]: (row["up_bps"], row["down_bps"])
+            for row in active_db().latest_app_snapshots()
+        }
+        items = []
+        for group in groups:
+            up_bps, down_bps = latest_network.get(group["app"], (0.0, 0.0))
+            items.append({
+                "app": group["app"],
+                "kind": group["kind"],
+                "cpu_percent": group["cpu_percent"],
+                "memory_rss": group["memory_rss"],
+                "proc_count": group["proc_count"],
+                "up_bps": up_bps,
+                "down_bps": down_bps,
+            })
+        sort_key = {
+            "cpu": lambda row: row["cpu_percent"],
+            "memory": lambda row: row["memory_rss"],
+            "network": lambda row: row["up_bps"] + row["down_bps"],
+        }[sort]
+        items.sort(key=sort_key, reverse=True)
+        return {"apps": items[:limit]}
+
+    @application.get("/api/apps/{app}/detail")
+    def app_detail(
+        app: str,
+        window: int = Query(3600, ge=60, le=7 * 24 * 60 * 60),
+    ) -> dict:
+        live_processes = list_application_processes()
+        groups = group_captured_processes(live_processes)
+        pids = next(
+            (set(group["pids"]) for group in groups if group["app"] == app),
+            set(),
+        )
+        processes = [
+            {
+                "name": row["name"],
+                "pid": row["pid"],
+                "cpu_percent": row["cpu_percent"],
+                "memory_rss": row["memory_rss"],
+                "cmdline": row.get("cmdline", ""),
+            }
+            for row in live_processes if row["pid"] in pids
+        ]
+        processes.sort(key=lambda row: (row["cpu_percent"], row["memory_rss"]), reverse=True)
+        end = int(time.time())
+        connections = [
+            {
+                "domain": row["domain"],
+                "remote_ip": row["remote_ip"],
+                "port": row["remote_port"],
+                "up_bps": row["up_bps"],
+                "down_bps": row["down_bps"],
+                "rtt_ms": row["rtt_ms"],
+                "via_proxy": row["via_proxy"],
+                "proxy_name": row["proxy_name"],
+            }
+            for row in active_db().latest_app_connections(app)
+        ]
+        return {
+            "app": app,
+            "processes": processes,
+            "history": active_db().app_history(app, end - window, end),
+            "connections": connections,
+        }
 
     @application.get("/api/events")
     def events(limit: int = Query(50, ge=1, le=200)) -> dict:

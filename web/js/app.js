@@ -2,15 +2,20 @@ import {api} from "./api.js";
 import {initChat} from "./chat.js";
 import {initSettings} from "./settings.js";
 import {initToolbox} from "./toolbox.js";
-import {HistoryChart, RealtimeCharts, formatBytes, formatRate} from "./charts.js";
+import {AppHistoryChart, HistoryChart, RealtimeCharts, formatBytes, formatRate} from "./charts.js";
 import {formatDateTime, formatNumber, initI18n, t} from "./i18n.js";
 
 initI18n();
 
 const realtimeCharts = new RealtimeCharts();
 const historyChart = new HistoryChart();
+const appHistoryChart = new AppHistoryChart();
 let historyHours = 1;
 let processSort = "cpu";
+let appSort = "cpu";
+let selectedApp = null;
+let appsPollTimer = null;
+let appsActive = false;
 let latestMetric = null;
 let latestDisks = null;
 let latestHealth = null;
@@ -159,6 +164,117 @@ async function loadProcesses() {
   } catch (error) { console.error(error); }
 }
 
+function emptyTable(body, columns, message) {
+  const row = body.insertRow(), cell = row.insertCell();
+  cell.colSpan = columns; cell.className = "empty"; cell.textContent = message;
+}
+
+function fillAppsTable(items) {
+  const body = byId("apps-body");
+  body.replaceChildren();
+  if (!items.length) { emptyTable(body, 5, t("apps.empty")); return; }
+  for (const item of items) {
+    const row = body.insertRow();
+    row.className = `app-row${selectedApp === item.app ? " active" : ""}`;
+    row.dataset.app = item.app;
+    row.addEventListener("click", () => selectApp(item.app));
+    const name = row.insertCell(), nameWrap = document.createElement("span");
+    nameWrap.className = "app-name-cell";
+    const label = document.createElement("span"); label.textContent = item.app;
+    nameWrap.append(label);
+    if (item.kind === "background") {
+      const badge = document.createElement("span");
+      badge.className = "background-badge"; badge.textContent = t("apps.background");
+      nameWrap.append(badge);
+    }
+    name.append(nameWrap);
+    row.insertCell().textContent = `${formatNumber(item.cpu_percent, {maximumFractionDigits: 1})}%`;
+    row.insertCell().textContent = formatBytes(item.memory_rss);
+    const network = row.insertCell(); network.className = "app-network-cell";
+    network.textContent = `↑ ${formatRate(item.up_bps)} · ↓ ${formatRate(item.down_bps)}`;
+    row.insertCell().textContent = formatNumber(item.proc_count);
+  }
+}
+
+async function loadApps() {
+  try {
+    const response = await api.apps(appSort);
+    fillAppsTable(response.apps);
+    if (selectedApp) await loadAppDetail(selectedApp);
+  } catch (error) { console.error(error); }
+}
+
+function renderAppProcesses(processes) {
+  const body = byId("app-process-body");
+  body.replaceChildren();
+  if (!processes.length) { emptyTable(body, 4, t("apps.noProcesses")); return; }
+  for (const item of processes) {
+    const row = body.insertRow(), name = row.insertCell();
+    name.className = "process-name"; name.textContent = item.name;
+    name.title = item.cmdline || item.name;
+    row.insertCell().textContent = formatNumber(item.pid);
+    row.insertCell().textContent = `${formatNumber(item.cpu_percent, {maximumFractionDigits: 1})}%`;
+    row.insertCell().textContent = formatBytes(item.memory_rss);
+  }
+}
+
+function renderAppConnections(connections) {
+  const body = byId("app-connection-body");
+  body.replaceChildren();
+  if (!connections.length) { emptyTable(body, 4, t("apps.noConnections")); return; }
+  for (const item of connections) {
+    const row = body.insertRow(), destination = row.insertCell();
+    const ipPort = `${item.remote_ip.includes(":") ? `[${item.remote_ip}]` : item.remote_ip}:${item.port}`;
+    destination.className = "connection-target";
+    destination.textContent = item.domain || ipPort;
+    destination.title = item.domain ? `${item.domain} · ${ipPort}` : ipPort;
+    row.insertCell().textContent = `↑ ${formatRate(item.up_bps)} · ↓ ${formatRate(item.down_bps)}`;
+    row.insertCell().textContent = item.rtt_ms == null
+      ? "--" : `${formatNumber(item.rtt_ms, {maximumFractionDigits: 1})} ms`;
+    const proxy = row.insertCell();
+    if (item.via_proxy) {
+      proxy.className = "proxy-mark";
+      proxy.textContent = t("apps.viaProxy", {name: item.proxy_name || t("apps.localProxy")});
+    } else {
+      proxy.textContent = "--";
+    }
+  }
+}
+
+async function loadAppDetail(app) {
+  try {
+    const detail = await api.appDetail(app);
+    if (selectedApp !== app) return;
+    setText("app-detail-title", detail.app);
+    renderAppProcesses(detail.processes);
+    renderAppConnections(detail.connections);
+    appHistoryChart.set(detail.history);
+    setTimeout(() => appHistoryChart.resize(), 0);
+  } catch (error) { console.error(error); }
+}
+
+function selectApp(app) {
+  selectedApp = app;
+  byId("app-detail").classList.remove("hidden");
+  document.querySelectorAll(".app-row").forEach(row => {
+    row.classList.toggle("active", row.dataset.app === app);
+  });
+  setText("app-detail-title", app);
+  loadAppDetail(app);
+}
+
+function setAppsActive(active) {
+  appsActive = active;
+  if (appsPollTimer !== null) {
+    clearInterval(appsPollTimer);
+    appsPollTimer = null;
+  }
+  if (!active) return;
+  loadApps();
+  appsPollTimer = setInterval(loadApps, 5000);
+  setTimeout(() => appHistoryChart.resize(), 0);
+}
+
 async function loadEvents() {
   try {
     const {items} = await api.events();
@@ -209,7 +325,13 @@ function bindControls() {
   document.querySelectorAll(".tab").forEach(button => button.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach(item => item.classList.toggle("active", item === button));
     document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.id === `${button.dataset.view}-view`));
+    setAppsActive(button.dataset.view === "apps");
     setTimeout(() => realtimeCharts.resize(), 0);
+  }));
+  document.querySelectorAll("[data-app-sort]").forEach(button => button.addEventListener("click", () => {
+    appSort = button.dataset.appSort;
+    document.querySelectorAll("[data-app-sort]").forEach(item => item.classList.toggle("active", item === button));
+    loadApps();
   }));
   byId("history-metric").addEventListener("change", loadHistory);
   byId("range-buttons").addEventListener("click", event => {
@@ -244,8 +366,10 @@ function bindControls() {
     healthExplanation = null;
     renderConnectionState();
     realtimeCharts.translate();
+    appHistoryChart.translate();
     if (latestMetric) updateCards(latestMetric, latestDisks);
     loadHistory(); loadProcesses(); loadEvents(); loadHealth();
+    if (appsActive) loadApps();
   });
 }
 

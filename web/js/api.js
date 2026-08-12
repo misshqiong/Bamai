@@ -20,6 +20,8 @@ export const api = {
   metrics: (metric, start, end) => request(`/api/metrics?${new URLSearchParams({metric, start, end})}`),
   processes: (sort, limit = 20) => request(`/api/processes?${new URLSearchParams({sort, limit})}`),
   processNet: () => request("/api/processes/net"),
+  apps: (sort, limit = 30) => request(`/api/apps?${new URLSearchParams({sort, limit})}`),
+  appDetail: (app, window = 3600) => request(`/api/apps/${encodeURIComponent(app)}/detail?${new URLSearchParams({window})}`),
   events: (limit = 50) => request(`/api/events?limit=${limit}`),
   health: () => request("/api/health"),
   explainHealth: () => request("/api/health/explain", {method: "POST"}),

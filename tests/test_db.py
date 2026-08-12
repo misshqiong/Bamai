@@ -20,6 +20,8 @@ def test_schema_and_round_trip(db):
         "metrics_hourly",
         "process_snapshots",
         "process_net",
+        "app_snapshots",
+        "app_connections",
         "disk_usage",
         "events",
     }
@@ -57,6 +59,15 @@ def test_cleanup_aggregates_and_applies_retention(db):
     db.insert_process_net(now - config.PROCESS_RETENTION_SECONDS - 1, [{
         "pid": 1, "name": "old", "up_bps": 1, "down_bps": 1
     }])
+    db.insert_app_snapshots(now - config.PROCESS_RETENTION_SECONDS - 1, [{
+        "app": "Old", "kind": "app", "cpu_percent": 1, "memory_rss": 1,
+        "proc_count": 1, "up_bps": 1, "down_bps": 1,
+    }])
+    db.insert_app_connections(now - config.PROCESS_RETENTION_SECONDS - 1, [{
+        "app": "Old", "remote_ip": "1.1.1.1", "remote_port": 443,
+        "domain": "one.one.one.one", "proto": "tcp", "up_bps": 1,
+        "down_bps": 1, "rtt_ms": 10, "via_proxy": 0, "proxy_name": None,
+    }])
     db.insert_disk_usage(now - config.DISK_RETENTION_SECONDS - 1, [{
         "mount": "/", "total": 100, "used": 50, "percent": 50
     }])
@@ -72,5 +83,34 @@ def test_cleanup_aggregates_and_applies_retention(db):
         assert tuple(hourly) == (30.0, 40.0)
         assert conn.execute("SELECT COUNT(*) FROM process_snapshots").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM process_net").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM app_snapshots").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM app_connections").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM disk_usage").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 0
+
+
+def test_app_snapshot_connection_queries_and_history(db):
+    for ts, cpu in ((100, 10.0), (160, 20.0)):
+        db.insert_app_snapshots(ts, [{
+            "app": "Google Chrome", "kind": "app", "cpu_percent": cpu,
+            "memory_rss": 1000 + ts, "proc_count": 2,
+            "up_bps": 100.0, "down_bps": 200.0,
+        }])
+    db.insert_app_connections(160, [
+        {
+            "app": "Google Chrome", "remote_ip": "1.1.1.1", "remote_port": 443,
+            "domain": "one.one.one.one", "proto": "tcp", "up_bps": 20,
+            "down_bps": 30, "rtt_ms": 12.5, "via_proxy": 0, "proxy_name": None,
+        },
+        {
+            "app": "Google Chrome", "remote_ip": "127.0.0.1", "remote_port": 7890,
+            "domain": None, "proto": "tcp", "up_bps": 100, "down_bps": 200,
+            "rtt_ms": 0.5, "via_proxy": 1, "proxy_name": "ClashX",
+        },
+    ])
+
+    assert db.latest_app_snapshots()[0]["ts"] == 160
+    assert [row["ts"] for row in db.app_history("Google Chrome", 0, 200)] == [100, 160]
+    connections = db.latest_app_connections("Google Chrome")
+    assert connections[0]["remote_port"] == 7890
+    assert connections[0]["proxy_name"] == "ClashX"
