@@ -169,6 +169,16 @@ def create_app(
             application.state.language.set(requested)
         return await call_next(request)
 
+    @application.middleware("http")
+    async def revalidate_static_assets(request: Request, call_next):
+        # 无构建链的 ES 模块靠浏览器启发式缓存，升级后会新旧混载；
+        # 强制每次带 ETag 重新验证（304 在本机代价可忽略）。
+        response = await call_next(request)
+        path = request.url.path
+        if path == "/" or path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
     def active_db() -> Database:
         db = application.state.db
         if db is None:

@@ -45,7 +45,12 @@ def test_overview_metrics_events_and_websocket(db, monkeypatch):
         assert history.status_code == 200
         assert history.json()["points"][0]["avg"] == 33
         assert client.get("/api/events").json()["items"][0]["kind"] == "example"
-        assert client.get("/").status_code == 200
+        index = client.get("/")
+        assert index.status_code == 200
+        assert index.headers["cache-control"] == "no-cache"
+        asset = client.get("/static/js/app.js")
+        assert asset.status_code == 200
+        assert asset.headers["cache-control"] == "no-cache"
         with client.websocket_connect("/ws/realtime") as websocket:
             assert websocket.receive_json()["ts"] == 100
 
