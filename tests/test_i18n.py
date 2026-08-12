@@ -68,11 +68,12 @@ def test_toolbox_keys_exist_in_both_languages():
         "toolbox.result", "toolbox.raw", "toolbox.explain", "toolbox.auth.title",
         *(f"toolbox.probe.{probe}.{field}" for probe in (
             "ping", "traceroute", "dns", "port", "netquality", "memory_check",
-            "wifi", "battery", "capture",
+            "wifi", "battery", "capture", "http_timing", "whois_lookup", "tls_check",
         ) for field in ("name", "desc")),
         *(f"toolbox.param.{name}" for name in (
             "host", "count", "domain", "recordType", "port", "windowMinutes",
-            "interface", "filter", "duration", "maxPackets",
+            "interface", "filter", "duration", "maxPackets", "url", "mode", "query",
+            "resolver",
         )),
     }
     for language in ("zh", "en"):
@@ -86,6 +87,7 @@ def test_apps_view_keys_exist_in_both_languages():
         "apps.network", "apps.processCount", "apps.background", "apps.history",
         "apps.processes", "apps.connections", "apps.connectionMode",
         "apps.destination", "apps.rtt", "apps.proxy",
+        "apps.diagnose", "apps.diagnosePrompt",
     }
     for language in ("zh", "en"):
         assert required <= set(dictionaries[language])

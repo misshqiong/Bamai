@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Mapping
 
+from ..apps import build_app_overview, list_application_processes
 from ..collector import list_processes, search_running_processes
 from ..db import METRIC_COLUMNS, Database
 from ..search.files import find_large_files, mdfind_search
@@ -27,6 +28,21 @@ def _function(name: str, description: str, properties: dict, required: list[str]
             },
         },
     }
+
+
+AGENT_PROBE_ALLOWLIST = {
+    "ping",
+    "dns",
+    "port",
+    "wifi",
+    "battery",
+    "memory_check",
+    "traceroute",
+    "netquality",
+    "http_timing",
+    "whois_lookup",
+    "tls_check",
+}
 
 
 TOOL_DEFINITIONS = [
@@ -65,15 +81,22 @@ TOOL_DEFINITIONS = [
     _function("search_processes", "按名称或命令行关键词搜索运行中的进程。", {
         "keyword": {"type": "string"},
     }, ["keyword"]),
+    _function("get_app_overview", "获取按应用聚合的当前资源占用（CPU、内存、网络、进程数）。", {
+        "limit": {"type": "integer", "minimum": 1, "maximum": 30},
+    }, ["limit"]),
+    _function("get_app_history", "查询某应用一段时间的 CPU、内存和网络历史。", {
+        "app": {"type": "string"},
+        "start_ts": {"type": "integer"},
+        "end_ts": {"type": "integer"},
+    }, ["app", "start_ts", "end_ts"]),
+    _function("get_app_connections", "查询某应用最近的网络连接、流量、RTT 和代理标记。", {
+        "app": {"type": "string"},
+    }, ["app"]),
     _function("run_probe", "运行一个安全的本机网络或系统诊断探测。", {
-        "probe_id": {"type": "string", "enum": [
-            "ping", "dns", "port", "wifi", "battery", "memory_check",
-        ]},
+        "probe_id": {"type": "string", "enum": sorted(AGENT_PROBE_ALLOWLIST)},
         "params": {"type": "object", "additionalProperties": True},
     }, ["probe_id", "params"]),
 ]
-
-AGENT_PROBE_ALLOWLIST = {"ping", "dns", "port", "wifi", "battery", "memory_check"}
 
 
 class ToolError(ValueError):
@@ -98,6 +121,7 @@ class ToolExecutor:
         process_search: Callable[[str, int], list[dict]] = search_running_processes,
         file_search: Callable[..., list[dict]] = mdfind_search,
         large_file_search: Callable[..., dict] = find_large_files,
+        application_process_provider: Callable[[], list[dict]] = list_application_processes,
         probe_registry: ProbeRegistry | None = None,
     ) -> None:
         self.db = db
@@ -105,6 +129,7 @@ class ToolExecutor:
         self.process_search = process_search
         self.file_search = file_search
         self.large_file_search = large_file_search
+        self.application_process_provider = application_process_provider
         self.probe_registry = probe_registry
 
     def execute(self, name: str, arguments: Mapping[str, Any] | None = None) -> ToolResult:
@@ -118,6 +143,9 @@ class ToolExecutor:
             "find_large_files": self._large_files,
             "search_files": self._search_files,
             "search_processes": self._search_processes,
+            "get_app_overview": self._app_overview,
+            "get_app_history": self._app_history,
+            "get_app_connections": self._app_connections,
             "run_probe": self._run_probe,
         }
         handler = handlers.get(name)
@@ -227,6 +255,67 @@ class ToolExecutor:
         return ToolResult(
             _compact(rows), f"搜索了包含“{keyword}”的运行中进程，找到 {len(rows)} 项"
         )
+
+    def _app_overview(self, args: dict) -> ToolResult:
+        self._only(args, {"limit"})
+        limit = self._integer(args, "limit", 1, 30)
+        rows = build_app_overview(
+            self.db,
+            self.application_process_provider(),
+            sort="cpu",
+            limit=limit,
+        )
+        return ToolResult(_compact({"apps": rows}), f"查询了当前前 {len(rows)} 个应用的资源占用")
+
+    def _app_history(self, args: dict) -> ToolResult:
+        self._only(args, {"app", "start_ts", "end_ts"})
+        app = self._text(args, "app")
+        start = self._integer(args, "start_ts")
+        end = self._integer(args, "end_ts")
+        if end < start:
+            raise ToolError("end_ts 必须大于等于 start_ts")
+        rows = self.db.app_history(app, start, end, max_points=30)
+        if not rows:
+            return ToolResult(
+                {"available": False, "app": app, "series": []},
+                f"没有找到应用“{app}”在指定时段的历史数据",
+            )
+        cpu_values = [float(row["cpu_percent"]) for row in rows]
+        memory_values = [int(row["memory_rss"]) for row in rows]
+        data = {
+            "available": True,
+            "app": app,
+            "start_ts": start,
+            "end_ts": end,
+            "summary": {
+                "cpu_percent": {
+                    "min": min(cpu_values),
+                    "max": max(cpu_values),
+                    "avg": sum(cpu_values) / len(cpu_values),
+                },
+                "memory_rss": {
+                    "min": min(memory_values),
+                    "max": max(memory_values),
+                    "avg": sum(memory_values) / len(memory_values),
+                },
+            },
+            "series": rows,
+        }
+        return ToolResult(
+            _compact(data),
+            f"查询了应用“{app}”在 {self._clock(start)}–{self._clock(end)} 的历史基线",
+        )
+
+    def _app_connections(self, args: dict) -> ToolResult:
+        self._only(args, {"app"})
+        app = self._text(args, "app")
+        rows = self.db.latest_app_connections(app, limit=30)
+        data = {
+            "app": app,
+            "connections": rows,
+            "note": "via_proxy=1 的连接 RTT 是到本地代理的，不代表真实网络延迟。",
+        }
+        return ToolResult(_compact(data), f"查询了应用“{app}”最近的 {len(rows)} 条网络连接")
 
     def _run_probe(self, args: dict) -> ToolResult:
         self._only(args, {"probe_id", "params"})

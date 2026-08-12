@@ -42,17 +42,21 @@ def build_registry(
         battery,
         capture,
         dns,
+        http_timing,
         memory_check,
         netquality,
         ping,
         port,
+        tls_check,
         traceroute,
+        whois_lookup,
         wifi,
     )
 
     registry = ProbeRegistry()
     for spec in (
-        ping.get_spec(), traceroute.get_spec(), dns.get_spec(), port.get_spec(),
+        ping.get_spec(), traceroute.get_spec(), dns.get_spec(), http_timing.get_spec(),
+        whois_lookup.get_spec(), tls_check.get_spec(), port.get_spec(),
         netquality.get_spec(), memory_check.get_spec(db), wifi.get_spec(), battery.get_spec(),
         capture.get_spec(Path(captures_dir)),
     ):

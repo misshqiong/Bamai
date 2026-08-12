@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -14,11 +15,14 @@ from server.toolbox.probes import (
     battery,
     capture,
     dns,
+    http_timing,
     memory_check,
     netquality,
     ping,
     port,
+    tls_check,
     traceroute,
+    whois_lookup,
     wifi,
 )
 from server.toolbox.registry import ProbeRegistry, build_registry
@@ -60,6 +64,41 @@ TCPDUMP_SAMPLE = """1710000000.100000 IP 192.168.1.2.51515 > 1.1.1.1.53: UDP, le
 1710000000.200000 IP 192.168.1.2.51515 > 1.1.1.1.53: UDP, length 48
 1710000001.300000 IP 192.168.1.2.60000 > 93.184.216.34.443: Flags [S], length 0
 """
+CURL_TIMING_SAMPLE = (
+    "time_namelookup=0.010000|time_connect=0.030000|time_appconnect=0.080000|"
+    "time_starttransfer=0.180000|time_total=0.200000|http_code=200|"
+    "remote_ip=93.184.216.34\n"
+)
+SCUTIL_PROXY_SAMPLE = """<dictionary> {
+  HTTPEnable : 1
+  HTTPPort : 7890
+  HTTPProxy : 127.0.0.1
+}
+"""
+RDAP_DOMAIN_SAMPLE = {
+    "status": ["active"],
+    "events": [
+        {"eventAction": "registration", "eventDate": "1995-08-14T04:00:00Z"},
+        {"eventAction": "expiration", "eventDate": "2027-08-13T04:00:00Z"},
+    ],
+    "entities": [{
+        "roles": ["registrar"],
+        "vcardArray": ["vcard", [["fn", {}, "text", "Example Registrar"]]],
+    }],
+}
+RDAP_IP_SAMPLE = {
+    "name": "EXAMPLE-NET", "startAddress": "192.0.2.0", "endAddress": "192.0.2.255",
+    "country": "US", "entities": [{
+        "roles": ["registrant"],
+        "vcardArray": ["vcard", [["fn", {}, "text", "Example Holder"]]],
+    }],
+}
+TLS_CERT_SAMPLE = {
+    "issuer": ((('commonName', "Example CA"),),),
+    "subject": ((('commonName', "example.com"),),),
+    "notAfter": "Aug 13 04:00:00 2027 GMT",
+    "subjectAltName": (("DNS", "example.com"), ("DNS", "www.example.com")),
+}
 
 
 def result(stdout="", stderr="", returncode=0):
@@ -137,6 +176,194 @@ def test_fixed_sample_parsers(db):
     capture_summary, sessions = capture.parse_tcpdump_output(TCPDUMP_SAMPLE)
     assert capture_summary["protocol_distribution"] == {"UDP": 2, "TCP": 1}
     assert sessions[0]["packets"] == 2 and sessions[0]["bytes"] == 80
+
+
+def test_http_timing_parsers_and_validation():
+    assert http_timing.parse_curl_output(CURL_TIMING_SAMPLE, is_https=True) == {
+        "dns_ms": 10.0,
+        "connect_ms": 20.0,
+        "tls_ms": 50.0,
+        "ttfb_ms": 100.0,
+        "total_ms": 200.0,
+        "http_code": 200,
+        "remote_ip": "93.184.216.34",
+    }
+    assert http_timing.parse_scutil_proxies(SCUTIL_PROXY_SAMPLE) == {
+        "enabled": True, "host": "127.0.0.1", "port": 7890,
+    }
+    assert http_timing.parse_scutil_proxies("<dictionary> {\n}")["enabled"] is False
+    spec = http_timing.get_spec()
+    assert spec.validate({"url": "https://example.com"})["mode"] == "direct"
+    for invalid in ("file:///tmp/x", "https://example.com/a b", "https://"):
+        with pytest.raises(ProbeValidationError):
+            spec.validate({"url": invalid})
+
+
+def test_http_timing_runner_uses_argument_lists_and_proxy_fallback(monkeypatch):
+    calls = []
+
+    def fake_run(command, timeout):
+        calls.append((command, timeout))
+        if command == ["scutil", "--proxies"]:
+            return result(stderr="unsupported", returncode=64)
+        if command == ["scutil", "--proxy"]:
+            return result(SCUTIL_PROXY_SAMPLE)
+        if command[0] == "curl":
+            return result(CURL_TIMING_SAMPLE)
+        raise AssertionError(command)
+
+    monkeypatch.setattr(http_timing, "run_command", fake_run)
+    outcome = http_timing.run({
+        "url": "https://example.com", "mode": "both",
+    })
+    assert outcome.summary["proxy_available"] is True
+    assert outcome.summary["direct_total_ms"] == 200.0
+    assert [row["mode"] for row in outcome.rows] == ["direct", "proxy"]
+    curl_commands = [command for command, _ in calls if command[0] == "curl"]
+    assert ["--noproxy", "*"] == curl_commands[0][8:10]
+    assert "--proxy" in curl_commands[1]
+
+
+def test_http_timing_proxy_mode_reports_missing_proxy(monkeypatch):
+    monkeypatch.setattr(
+        http_timing,
+        "run_command",
+        lambda command, timeout: result("<dictionary> {\n}\n"),
+    )
+    outcome = http_timing.run({"url": "http://example.com", "mode": "proxy"})
+    assert outcome.summary["proxy_available"] is False
+    assert "代理" in outcome.summary["error"]
+
+
+def test_whois_rdap_extractors_validation_and_runner(monkeypatch):
+    domain = whois_lookup.extract_rdap_summary(RDAP_DOMAIN_SAMPLE, "domain")
+    assert domain == {
+        "found": True,
+        "registrar": "Example Registrar",
+        "created_at": "1995-08-14T04:00:00Z",
+        "expires_at": "2027-08-13T04:00:00Z",
+        "status": ["active"],
+    }
+    ip = whois_lookup.extract_rdap_summary(RDAP_IP_SAMPLE, "ip")
+    assert ip["range"] == "192.0.2.0 - 192.0.2.255"
+    assert ip["holder"] == "Example Holder"
+    spec = whois_lookup.get_spec()
+    assert spec.validate({"query": "2001:db8::1"})["query"] == "2001:db8::1"
+    with pytest.raises(ProbeValidationError):
+        spec.validate({"query": "bad host/name"})
+
+    captured = {}
+
+    class Response:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return RDAP_DOMAIN_SAMPLE
+
+    def fake_get(url, **kwargs):
+        captured["url"] = url
+        captured.update(kwargs)
+        return Response()
+
+    monkeypatch.setattr(whois_lookup.httpx, "get", fake_get)
+    outcome = whois_lookup.run({"query": "example.com"})
+    assert outcome.summary["registrar"] == "Example Registrar"
+    assert captured == {
+        "url": "https://rdap.org/domain/example.com",
+        "follow_redirects": True,
+        "timeout": 15,
+    }
+
+
+def test_whois_runner_returns_not_found_without_raising(monkeypatch):
+    class Response:
+        status_code = 404
+
+    monkeypatch.setattr(whois_lookup.httpx, "get", lambda *args, **kwargs: Response())
+    assert whois_lookup.run({"query": "example.invalid"}).summary["found"] is False
+
+
+def test_tls_date_certificate_summary_and_validation():
+    expiry = tls_check.parse_certificate_date("Aug 13 04:00:00 2027 GMT")
+    assert expiry == datetime(2027, 8, 13, 4, tzinfo=timezone.utc)
+    summary = tls_check.certificate_summary(
+        TLS_CERT_SAMPLE,
+        "TLSv1.3",
+        now=datetime(2027, 8, 10, 4, tzinfo=timezone.utc),
+    )
+    assert summary == {
+        "protocol": "TLSv1.3",
+        "issuer": "Example CA",
+        "subject": "example.com",
+        "not_after": "2027-08-13T04:00:00Z",
+        "days_remaining": 3,
+        "san_count": 2,
+    }
+    spec = tls_check.get_spec()
+    for params in ({"host": "bad host"}, {"host": "example.com", "port": 0}):
+        with pytest.raises(ProbeValidationError):
+            spec.validate(params)
+
+
+def test_tls_runner_uses_ssl_and_socket_without_openssl(monkeypatch):
+    calls = []
+
+    class Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+    class TLSSocket(Connection):
+        def version(self):
+            return "TLSv1.3"
+
+        def getpeercert(self, binary_form=False):
+            return b"der" if binary_form else TLS_CERT_SAMPLE
+
+    class Context:
+        def wrap_socket(self, connection, server_hostname):
+            calls.append((connection, server_hostname))
+            return TLSSocket()
+
+    monkeypatch.setattr(
+        tls_check.socket, "create_connection", lambda address, timeout: Connection()
+    )
+    monkeypatch.setattr(tls_check.ssl, "create_default_context", lambda: Context())
+    outcome = tls_check.run({"host": "example.com", "port": 443})
+    assert outcome.summary["valid"] is True
+    assert outcome.summary["subject"] == "example.com"
+    assert calls[0][1] == "example.com"
+
+
+def test_dns_compare_consistency_and_failure_tolerance(monkeypatch):
+    answers = {
+        "system": result("1.1.1.1\n"),
+        "ali": result("1.1.1.1\n"),
+        "google": result("1.1.1.1\n"),
+    }
+
+    def fake_run(command, timeout):
+        resolver = (
+            "ali" if "@223.5.5.5" in command
+            else "google" if "@8.8.8.8" in command else "system"
+        )
+        return answers[resolver]
+
+    monkeypatch.setattr(dns, "run_command", fake_run)
+    params = {"domain": "example.com", "type": "A", "resolver": "compare"}
+    assert dns.run(params).summary["consistent"] is True
+    answers["google"] = result("8.8.8.8\n")
+    assert dns.run(params).summary["consistent"] is False
+    answers["google"] = result(stderr="timeout", returncode=9)
+    failed = dns.run(params)
+    assert failed.summary["consistent"] is False
+    assert next(row for row in failed.rows if row["resolver"] == "google")["error"]
+    params["type"] = "MX"
+    assert dns.run(params).summary["consistent"] is None
+    assert dns.get_spec().timeout == 25
 
 
 def test_probe_commands_are_argument_lists(monkeypatch, tmp_path, db):
@@ -233,11 +460,12 @@ def test_capture_authorization_detection_is_mockable(monkeypatch, tmp_path):
         jobs.close()
 
 
-def test_default_registry_contains_all_nine_probes(db, tmp_path, monkeypatch):
+def test_default_registry_contains_all_twelve_probes(db, tmp_path, monkeypatch):
     monkeypatch.setattr(capture, "list_interfaces", lambda: ("en0",))
     registry = build_registry(db, tmp_path)
     assert [spec.id for spec in registry.all()] == [
-        "ping", "traceroute", "dns", "port", "netquality", "memory_check",
+        "ping", "traceroute", "dns", "http_timing", "whois_lookup", "tls_check",
+        "port", "netquality", "memory_check",
         "wifi", "battery", "capture",
     ]
 

@@ -28,9 +28,31 @@ def build_system_prompt(now: int | None = None, language: str = "zh") -> str:
         "6. 回答相对时间问题时自行换算为 Unix 秒再调用工具。\n"
         "7. 工具是你的内部能力，回答中不要出现工具名、参数或命令行语法；"
         '给用户的建议要用普通话术（如"在进程表中按内存排序查看"）。\n\n'
+        "8. 诊断应用卡顿或占用高时，严格按这个顺序工作：先用 get_app_overview "
+        "定位异常应用；再用 get_app_history 对比该应用自己的历史基线，区分突然升高和"
+        "一贯如此；查询进程明细找出元凶子进程；用 get_app_connections 检查高 RTT、"
+        "流量异常或重传。via_proxy=1 的 RTT 只代表到本地代理的延迟，不能当作真实网络"
+        "延迟，真实延迟要用 http_timing。需要时再用 http_timing 分段定位、DNS compare "
+        "判断解析问题、whois_lookup 识别陌生对端、tls_check 检查证书。最终结论必须明确"
+        "说明元凶是什么、属于应用自身问题还是系统性问题，并给出一到三条可操作建议。\n\n"
         f"当前本地时间：{current.isoformat(timespec='seconds')}\n"
         f"当前 Unix 秒：{current_ts}\n"
         f"今日 0 点 Unix 秒：{int(today.timestamp())}\n"
+    )
+
+
+def build_app_diagnosis_prompt(app: str, language: str = "zh") -> str:
+    if normalize_language(language) == "en":
+        return (
+            f"Diagnose the current resource use and network condition of the application "
+            f'"{app}". Follow the application diagnosis SOP: compare it with its own history, '
+            "identify the responsible child process or connection, determine whether the issue "
+            "is specific to the app or system-wide, and give one to three actionable suggestions."
+        )
+    return (
+        f"请按应用诊断 SOP 检查应用“{app}”当前的资源占用和网络状况：先与它自己的历史基线"
+        "对比，再定位元凶子进程或连接，判断是应用自身问题还是系统性问题，最后给出一到三条"
+        "可操作建议。"
     )
 
 

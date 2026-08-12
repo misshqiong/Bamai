@@ -21,6 +21,7 @@ let latestDisks = null;
 let latestHealth = null;
 let healthExplanation = null;
 let ollamaReady = false;
+let chatController = null;
 
 const byId = id => document.getElementById(id);
 const setText = (id, text) => { byId(id).textContent = text; };
@@ -260,7 +261,27 @@ function selectApp(app) {
     row.classList.toggle("active", row.dataset.app === app);
   });
   setText("app-detail-title", app);
+  syncDiagnoseButton();
   loadAppDetail(app);
+}
+
+function syncDiagnoseButton() {
+  const button = byId("app-diagnose");
+  button.disabled = !selectedApp || !chatController?.ready || chatController.busy;
+}
+
+function openChatPanel() {
+  if (matchMedia("(max-width: 1180px)").matches) {
+    byId("chat-panel").classList.add("open");
+  } else {
+    document.body.classList.remove("chat-collapsed");
+  }
+}
+
+function diagnoseSelectedApp() {
+  if (!selectedApp || !chatController?.ready || chatController.busy) return;
+  openChatPanel();
+  chatController.sendPreset(t("apps.diagnosePrompt", {name: selectedApp}));
 }
 
 function setAppsActive(active) {
@@ -322,6 +343,7 @@ function setNotice(container, className, text) {
 }
 
 function bindControls() {
+  window.addEventListener("chatstatechange", syncDiagnoseButton);
   document.querySelectorAll(".tab").forEach(button => button.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach(item => item.classList.toggle("active", item === button));
     document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.id === `${button.dataset.view}-view`));
@@ -352,6 +374,7 @@ function bindControls() {
     setTimeout(() => realtimeCharts.resize(), 260);
   });
   byId("health-explain").addEventListener("click", explainHealth);
+  byId("app-diagnose").addEventListener("click", diagnoseSelectedApp);
   byId("search-form").addEventListener("submit", async event => {
     event.preventDefault(); const target = byId("search-results"); target.replaceChildren(); setNotice(target, "loading", t("search.searching"));
     try { renderFiles(target, (await api.search(byId("search-query").value, byId("search-kind").value)).items); }
@@ -374,7 +397,8 @@ function bindControls() {
 }
 
 bindControls();
-initChat();
+chatController = initChat();
+syncDiagnoseButton();
 initSettings();
 initToolbox();
 connectRealtime();

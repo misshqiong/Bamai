@@ -9,6 +9,8 @@ from typing import Any
 
 import psutil
 
+from .db import Database
+
 ParentLookup = Callable[[int], int | None]
 
 _APP_COMPONENT = re.compile(r"(?:^|/)([^/]+)\.app(?:/|$)", re.IGNORECASE)
@@ -136,3 +138,38 @@ def group_captured_processes(procs: list[dict[str, Any]]) -> list[dict[str, Any]
     """用同一轮捕获的 ppid 归组，避免再次访问易消失的进程。"""
     parents = {int(process["pid"]): int(process.get("ppid") or 0) or None for process in procs}
     return group_processes(procs, parent_lookup=parents.get)
+
+
+def build_app_overview(
+    db: Database,
+    processes: list[dict[str, Any]],
+    *,
+    sort: str = "cpu",
+    limit: int = 30,
+) -> list[dict[str, Any]]:
+    """聚合实时 CPU/内存与最近一轮应用网络数据，供 API 和 agent 共用。"""
+    sort_keys = {
+        "cpu": lambda row: row["cpu_percent"],
+        "memory": lambda row: row["memory_rss"],
+        "network": lambda row: row["up_bps"] + row["down_bps"],
+    }
+    if sort not in sort_keys:
+        raise ValueError(f"不支持的应用排序: {sort}")
+    latest_network = {
+        row["app"]: (row["up_bps"], row["down_bps"])
+        for row in db.latest_app_snapshots()
+    }
+    items = []
+    for group in group_captured_processes(processes):
+        up_bps, down_bps = latest_network.get(group["app"], (0.0, 0.0))
+        items.append({
+            "app": group["app"],
+            "kind": group["kind"],
+            "cpu_percent": group["cpu_percent"],
+            "memory_rss": group["memory_rss"],
+            "proc_count": group["proc_count"],
+            "up_bps": up_bps,
+            "down_bps": down_bps,
+        })
+    items.sort(key=sort_keys[sort], reverse=True)
+    return items[:max(1, min(int(limit), 100))]

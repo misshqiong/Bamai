@@ -6,6 +6,7 @@ import json
 import httpx
 
 from server.agent.ollama_client import ChatResult, EventDiagnoser, OllamaClient
+from server.agent.prompts import build_app_diagnosis_prompt, build_system_prompt
 from server.agent.tools import ToolResult
 from server.settings import SettingsStore
 
@@ -17,6 +18,19 @@ class FakeTools:
     def execute(self, name, arguments):
         self.calls.append((name, arguments))
         return ToolResult({"cpu_percent": 37}, "查询了当前系统状态")
+
+
+def test_application_diagnosis_prompts_cover_sop_in_both_languages():
+    chinese = build_app_diagnosis_prompt("Google Chrome", "zh")
+    english = build_app_diagnosis_prompt("Google Chrome", "en-US")
+    assert "Google Chrome" in chinese and "历史基线" in chinese
+    assert "Google Chrome" in english and "own history" in english
+    system = build_system_prompt(now=1_700_000_000)
+    for keyword in (
+        "get_app_overview", "get_app_history", "get_app_connections", "via_proxy=1",
+        "http_timing", "DNS compare", "whois_lookup", "tls_check", "元凶",
+    ):
+        assert keyword in system
 
 
 def test_ollama_tool_loop_sends_think_false_and_strips_think_tags():
@@ -59,7 +73,7 @@ def test_ollama_tool_loop_sends_think_false_and_strips_think_tags():
     assert requests[0]["think"] is False
     assert requests[0]["stream"] is False
     assert requests[0]["options"] == {"temperature": 0.7, "num_ctx": 8192}
-    assert len(requests[0]["tools"]) == 9
+    assert len(requests[0]["tools"]) == 12
 
 
 def test_reply_strips_think_content_without_opening_tag():

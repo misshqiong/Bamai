@@ -4,7 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from server.agent.tools import ToolError, ToolExecutor
+from server.agent.tools import (
+    AGENT_PROBE_ALLOWLIST,
+    TOOL_DEFINITIONS,
+    ToolError,
+    ToolExecutor,
+)
 from server.collector import parse_nettop_output
 from server.search.files import find_large_files, mdfind_search
 from tests.conftest import metric
@@ -57,7 +62,7 @@ def test_large_file_relative_escape_is_rejected():
         find_large_files("../../../../tmp", min_mb=1)
 
 
-def test_all_eight_agent_tools_dispatch_with_compact_results(db):
+def test_existing_agent_tools_dispatch_with_compact_results(db):
     db.insert_metric(metric(100, cpu_percent=42.6))
     db.insert_disk_usage(100, [{"mount": "/", "total": 1000, "used": 400, "percent": 40.4}])
     db.insert_process_snapshots(100, [{
@@ -95,6 +100,79 @@ def test_all_eight_agent_tools_dispatch_with_compact_results(db):
     assert results[0].data["cpu_percent"] == 43
     assert len(results[2].data["series"]) <= 50
     assert all(result.summary for result in results)
+
+
+def test_app_diagnosis_tools_use_shared_live_and_database_data(db):
+    db.insert_app_snapshots(100, [{
+        "app": "Example", "kind": "app", "cpu_percent": 10,
+        "memory_rss": 1000, "proc_count": 1, "up_bps": 20, "down_bps": 30,
+    }])
+    db.insert_app_snapshots(200, [{
+        "app": "Example", "kind": "app", "cpu_percent": 30,
+        "memory_rss": 3000, "proc_count": 1, "up_bps": 200, "down_bps": 300,
+    }])
+    db.insert_app_connections(200, [{
+        "app": "Example", "remote_ip": "127.0.0.1", "remote_port": 7890,
+        "domain": None, "proto": "tcp", "up_bps": 200, "down_bps": 300,
+        "rtt_ms": 1.5, "via_proxy": 1, "proxy_name": "Proxy App",
+    }])
+    live = [{
+        "pid": 7, "ppid": 0, "name": "Example", "cpu_percent": 12.6,
+        "memory_rss": 2500, "cmdline": "example", "argv0": "example",
+        "exe": "/Applications/Example.app/Contents/MacOS/Example",
+    }]
+    tools = ToolExecutor(db, application_process_provider=lambda: live)
+
+    overview = tools.execute("get_app_overview", {"limit": 5})
+    assert overview.data["apps"] == [{
+        "app": "Example", "kind": "app", "cpu_percent": 13,
+        "memory_rss": 2500, "proc_count": 1, "up_bps": 200, "down_bps": 300,
+    }]
+    history = tools.execute("get_app_history", {
+        "app": "Example", "start_ts": 0, "end_ts": 300,
+    })
+    assert history.data["available"] is True
+    assert history.data["summary"]["cpu_percent"] == {"min": 10, "max": 30, "avg": 20}
+    assert history.data["summary"]["memory_rss"] == {
+        "min": 1000, "max": 3000, "avg": 2000,
+    }
+    connections = tools.execute("get_app_connections", {"app": "Example"})
+    assert connections.data["connections"][0]["remote_port"] == 7890
+    assert "不代表真实网络延迟" in connections.data["note"]
+    missing = tools.execute("get_app_history", {
+        "app": "Missing", "start_ts": 0, "end_ts": 300,
+    })
+    assert missing.data == {"available": False, "app": "Missing", "series": []}
+
+
+def test_app_diagnosis_tool_validation_and_probe_allowlist(db):
+    tools = ToolExecutor(db, application_process_provider=lambda: [])
+    invalid_calls = [
+        ("get_app_overview", {"limit": 0}),
+        ("get_app_history", {"app": "", "start_ts": 0, "end_ts": 1}),
+        ("get_app_history", {"app": "Example", "start_ts": 2, "end_ts": 1}),
+        ("get_app_connections", {"app": "Example", "extra": True}),
+    ]
+    for name, arguments in invalid_calls:
+        with pytest.raises(ToolError):
+            tools.execute(name, arguments)
+
+    run_probe = next(
+        definition["function"]
+        for definition in TOOL_DEFINITIONS
+        if definition["function"]["name"] == "run_probe"
+    )
+    assert set(run_probe["parameters"]["properties"]["probe_id"]["enum"]) == (
+        AGENT_PROBE_ALLOWLIST
+    )
+    assert AGENT_PROBE_ALLOWLIST == {
+        "ping", "dns", "port", "wifi", "battery", "memory_check", "traceroute",
+        "netquality", "http_timing", "whois_lookup", "tls_check",
+    }
+    assert "capture" not in AGENT_PROBE_ALLOWLIST
+    assert {definition["function"]["name"] for definition in TOOL_DEFINITIONS} >= {
+        "get_app_overview", "get_app_history", "get_app_connections",
+    }
 
 
 def test_agent_tool_parameter_validation(db):

@@ -54,6 +54,15 @@ class ChatController {
     if (ready && this.list.childElementCount === 0) {
       this.welcome = this.addBubble("assistant", t("chat.greeting"), []);
     }
+    this.notifyState();
+  }
+
+  sendPreset(text) {
+    const content = typeof text === "string" ? text.trim() : "";
+    if (!content || !this.ready || this.busy) return false;
+    this.input.value = content;
+    this.submit();
+    return true;
   }
 
   async submit() {
@@ -84,6 +93,13 @@ class ChatController {
     this.input.disabled = busy || !this.ready;
     this.send.disabled = busy || !this.ready;
     this.send.textContent = busy ? t("chat.thinking") : t("chat.send");
+    this.notifyState();
+  }
+
+  notifyState() {
+    window.dispatchEvent(new CustomEvent("chatstatechange", {
+      detail: {ready: this.ready, busy: this.busy},
+    }));
   }
 
   addBubble(role, content, trace) {
