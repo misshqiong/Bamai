@@ -8,6 +8,7 @@ from urllib.parse import quote
 import httpx
 
 from ..base import ProbeParam, ProbeResult, ProbeSpec
+from .http_timing import _proxy_url, _system_http_proxy
 from .ping import validate_host
 
 
@@ -99,10 +100,22 @@ def run(params: dict) -> ProbeResult:
     except ValueError:
         query_type = "domain"
     url = f"https://rdap.org/{query_type}/{quote(query, safe='')}"
+    via_proxy = False
     try:
-        response = httpx.get(url, follow_redirects=True, timeout=15)
-    except httpx.HTTPError as exc:
-        return ProbeResult({"found": False, "reason": f"RDAP 请求失败: {exc}"})
+        response = httpx.get(url, follow_redirects=True, timeout=8)
+    except httpx.HTTPError as direct_exc:
+        # 部分网络环境直连 RDAP 服务不可达，回退到系统 HTTP 代理再试一次。
+        proxy = _proxy_url(_system_http_proxy()[0])
+        if proxy is None:
+            return ProbeResult({"found": False, "reason": f"RDAP 请求失败: {direct_exc}"})
+        try:
+            response = httpx.get(url, follow_redirects=True, timeout=15, proxy=proxy)
+            via_proxy = True
+        except httpx.HTTPError as proxy_exc:
+            return ProbeResult({
+                "found": False,
+                "reason": f"RDAP 直连与经系统代理均失败: {direct_exc} / {proxy_exc}",
+            })
     if response.status_code == 404:
         return ProbeResult({"found": False, "reason": "未找到 RDAP 记录（HTTP 404）"})
     if response.status_code < 200 or response.status_code >= 300:
@@ -116,8 +129,10 @@ def run(params: dict) -> ProbeResult:
         return ProbeResult({"found": False, "reason": "RDAP 服务返回了无效 JSON"})
     if not isinstance(payload, dict):
         return ProbeResult({"found": False, "reason": "RDAP 响应格式无效"})
+    summary = extract_rdap_summary(payload, query_type)
+    summary["via_proxy"] = via_proxy
     return ProbeResult(
-        extract_rdap_summary(payload, query_type),
+        summary,
         raw_output=json.dumps(payload, ensure_ascii=False, indent=2),
     )
 

@@ -269,11 +269,50 @@ def test_whois_rdap_extractors_validation_and_runner(monkeypatch):
     monkeypatch.setattr(whois_lookup.httpx, "get", fake_get)
     outcome = whois_lookup.run({"query": "example.com"})
     assert outcome.summary["registrar"] == "Example Registrar"
+    assert outcome.summary["via_proxy"] is False
     assert captured == {
         "url": "https://rdap.org/domain/example.com",
         "follow_redirects": True,
-        "timeout": 15,
+        "timeout": 8,
     }
+
+
+def test_whois_runner_falls_back_to_system_proxy(monkeypatch):
+    calls = []
+
+    class Response:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return RDAP_DOMAIN_SAMPLE
+
+    def fake_get(url, **kwargs):
+        calls.append(kwargs)
+        if "proxy" not in kwargs:
+            raise whois_lookup.httpx.ConnectTimeout("直连超时")
+        return Response()
+
+    monkeypatch.setattr(whois_lookup.httpx, "get", fake_get)
+    monkeypatch.setattr(
+        whois_lookup,
+        "_system_http_proxy",
+        lambda: ({"enabled": True, "host": "127.0.0.1", "port": 7890}, ""),
+    )
+    outcome = whois_lookup.run({"query": "example.com"})
+    assert outcome.summary["found"] is True
+    assert outcome.summary["via_proxy"] is True
+    assert calls[1]["proxy"] == "http://127.0.0.1:7890"
+
+    # 没有系统代理时直接返回失败原因，不再重试。
+    monkeypatch.setattr(
+        whois_lookup,
+        "_system_http_proxy",
+        lambda: ({"enabled": False, "host": None, "port": None}, ""),
+    )
+    failed = whois_lookup.run({"query": "example.com"})
+    assert failed.summary["found"] is False
+    assert "RDAP 请求失败" in failed.summary["reason"]
 
 
 def test_whois_runner_returns_not_found_without_raising(monkeypatch):
