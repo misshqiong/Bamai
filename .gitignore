@@ -13,3 +13,4 @@ dist/
 web/vendor/
 .DS_Store
 captures/
+.claude/launch.json

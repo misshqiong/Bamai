@@ -44,6 +44,9 @@ def _endpoint(value: str) -> tuple[str, int] | None:
     text = value.strip()
     if text.startswith("[") and "]:" in text:
         host, port_text = text[1:].rsplit("]:", 1)
+    elif text.count(":") >= 2 and "." in text:
+        # IPv6 地址本身含冒号，nettop 实测用最后一个点分隔端口（fe80::1.443）。
+        host, port_text = text.rsplit(".", 1)
     elif ":" in text:
         host, port_text = text.rsplit(":", 1)
     else:

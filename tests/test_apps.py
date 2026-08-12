@@ -55,7 +55,8 @@ def test_parse_connection_nettop_with_process_rows_udp_and_rtt():
         "tcp4 10.0.0.5:52344<->93.184.216.34:443,2000,1000,12.5\n"
         "udp4 10.0.0.5:5353<->8.8.8.8:53,500,250,\n"
         "com.apple.helper.456,900,700,\n"
-        "tcp6 [::1]:50100<->[::1]:7890,100,50,0.8\n"
+        "tcp6 fe80::aede:48ff%en0.50100<->2607:f8b0::200e.7890,100,50,0.8 ms\n"
+        "udp6 *.5353<->*.*,10,5,\n"
     )
     rows = parse_nettop_connections(sample)
     assert rows[0] == {
@@ -66,8 +67,14 @@ def test_parse_connection_nettop_with_process_rows_udp_and_rtt():
     }
     assert rows[1]["proto"] == "udp"
     assert rows[1]["rtt_ms"] is None
+    # 真实 nettop 的 IPv6 行用点分隔端口且带 %zone；通配监听行应被跳过。
     assert rows[2]["pid"] == 456
-    assert rows[2]["remote_ip"] == "::1"
+    assert rows[2]["local_ip"] == "fe80::aede:48ff"
+    assert rows[2]["local_port"] == 50100
+    assert rows[2]["remote_ip"] == "2607:f8b0::200e"
+    assert rows[2]["remote_port"] == 7890
+    assert rows[2]["rtt_ms"] == 0.8
+    assert len(rows) == 3
 
 
 def test_parse_connection_nettop_missing_rtt_and_headerless():
