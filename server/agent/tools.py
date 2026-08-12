@@ -84,10 +84,11 @@ TOOL_DEFINITIONS = [
     _function("get_app_overview", "获取按应用聚合的当前资源占用（CPU、内存、网络、进程数）。", {
         "limit": {"type": "integer", "minimum": 1, "maximum": 30},
     }, ["limit"]),
-    _function("get_app_history", "查询某应用一段时间的 CPU、内存和网络历史。", {
+    _function("get_app_history", "查询某应用（或其某个子进程）一段时间的 CPU、内存历史。", {
         "app": {"type": "string"},
         "start_ts": {"type": "integer"},
         "end_ts": {"type": "integer"},
+        "process_name": {"type": "string", "description": "可选的子进程名称"},
     }, ["app", "start_ts", "end_ts"]),
     _function("get_app_connections", "查询某应用最近的网络连接、流量、RTT 和代理标记。", {
         "app": {"type": "string"},
@@ -268,23 +269,37 @@ class ToolExecutor:
         return ToolResult(_compact({"apps": rows}), f"查询了当前前 {len(rows)} 个应用的资源占用")
 
     def _app_history(self, args: dict) -> ToolResult:
-        self._only(args, {"app", "start_ts", "end_ts"})
+        self._only(args, {"app", "start_ts", "end_ts", "process_name"})
         app = self._text(args, "app")
         start = self._integer(args, "start_ts")
         end = self._integer(args, "end_ts")
         if end < start:
             raise ToolError("end_ts 必须大于等于 start_ts")
-        rows = self.db.app_history(app, start, end, max_points=30)
+        process_name = (
+            self._text(args, "process_name") if "process_name" in args else None
+        )
+        rows = (
+            self.db.app_process_history(
+                app, process_name, start, end, max_points=30
+            )
+            if process_name is not None
+            else self.db.app_history(app, start, end, max_points=30)
+        )
+        identity = {"app": app}
+        subject = f"应用“{app}”"
+        if process_name is not None:
+            identity["process_name"] = process_name
+            subject += f"的子进程“{process_name}”"
         if not rows:
             return ToolResult(
-                {"available": False, "app": app, "series": []},
-                f"没有找到应用“{app}”在指定时段的历史数据",
+                {"available": False, **identity, "series": []},
+                f"没有找到{subject}在指定时段的历史数据",
             )
         cpu_values = [float(row["cpu_percent"]) for row in rows]
         memory_values = [int(row["memory_rss"]) for row in rows]
         data = {
             "available": True,
-            "app": app,
+            **identity,
             "start_ts": start,
             "end_ts": end,
             "summary": {
@@ -303,7 +318,7 @@ class ToolExecutor:
         }
         return ToolResult(
             _compact(data),
-            f"查询了应用“{app}”在 {self._clock(start)}–{self._clock(end)} 的历史基线",
+            f"查询了{subject}在 {self._clock(start)}–{self._clock(end)} 的历史基线",
         )
 
     def _app_connections(self, args: dict) -> ToolResult:

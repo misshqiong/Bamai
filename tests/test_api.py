@@ -180,6 +180,10 @@ def test_apps_list_and_detail_endpoints(db, monkeypatch):
         "domain": "one.one.one.one", "proto": "tcp", "up_bps": 100,
         "down_bps": 500, "rtt_ms": 12, "via_proxy": 0, "proxy_name": None,
     }])
+    db.insert_app_process_snapshots(now, [{
+        "app": "Google Chrome", "name": "Chrome Helper",
+        "cpu_percent": 2.5, "memory_rss": 500, "proc_count": 1,
+    }])
 
     with TestClient(create_app(db, collector_enabled=False, agent_client=FakeAgent())) as client:
         response = client.get("/api/apps", params={"sort": "network", "limit": 2})
@@ -197,6 +201,9 @@ def test_apps_list_and_detail_endpoints(db, monkeypatch):
         assert body["app"] == "Google Chrome"
         assert [process["pid"] for process in body["processes"]] == [10, 11]
         assert body["history"][0]["cpu_percent"] == 15
+        assert body["process_names"] == [{
+            "name": "Chrome Helper", "peak_cpu": 2.5, "peak_memory_rss": 500,
+        }]
         assert body["connections"][0] == {
             "domain": "one.one.one.one", "remote_ip": "1.1.1.1", "port": 443,
             "up_bps": 100.0, "down_bps": 500.0, "rtt_ms": 12.0,
@@ -208,3 +215,26 @@ def test_apps_list_and_detail_endpoints(db, monkeypatch):
             "/api/apps/Google%20Chrome/detail", params={"window": 59}
         )
         assert invalid_window.status_code == 422
+
+        process_history = client.get(
+            "/api/apps/Google%20Chrome/process-history",
+            params={"name": "Chrome Helper", "window": 3600},
+        )
+        assert process_history.status_code == 200
+        assert process_history.json() == {
+            "app": "Google Chrome",
+            "name": "Chrome Helper",
+            "history": [{
+                "ts": now, "app": "Google Chrome", "name": "Chrome Helper",
+                "cpu_percent": 2.5, "memory_rss": 500, "proc_count": 1,
+            }],
+        }
+        assert client.get(
+            "/api/apps/Google%20Chrome/process-history"
+        ).status_code == 422
+        for window in (59, 7 * 24 * 60 * 60 + 1):
+            invalid = client.get(
+                "/api/apps/Google%20Chrome/process-history",
+                params={"name": "Chrome Helper", "window": window},
+            )
+            assert invalid.status_code == 422

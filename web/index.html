@@ -111,10 +111,25 @@
 
         <section id="app-detail" class="panel hidden">
           <div class="panel-heading">
-            <div><p class="eyebrow" data-i18n="apps.detailEyebrow">应用详情 · 过去 1 小时</p><h2 id="app-detail-title"></h2></div>
+            <div><p class="eyebrow" data-i18n="apps.detailEyebrow">应用详情</p><h2 id="app-detail-title"></h2></div>
             <button id="app-diagnose" class="secondary" type="button" disabled data-i18n="apps.diagnose">让 AI 诊断</button>
           </div>
-          <div><h3 data-i18n="apps.history">CPU / 内存历史</h3><div id="app-history-chart" class="chart history-chart"></div></div>
+          <div>
+            <div class="panel-heading history-controls">
+              <h3 data-i18n="apps.history">CPU / 内存历史</h3>
+              <div class="control-row">
+                <select id="app-history-series" aria-label="应用历史序列">
+                  <option value="" data-i18n="apps.series.total">整体</option>
+                </select>
+                <div id="app-history-range" class="segmented">
+                  <button type="button" data-window="3600" class="active" data-i18n="apps.window.1h">1h</button>
+                  <button type="button" data-window="21600" data-i18n="apps.window.6h">6h</button>
+                  <button type="button" data-window="86400" data-i18n="apps.window.24h">24h</button>
+                </div>
+              </div>
+            </div>
+            <div id="app-history-chart" class="chart history-chart"></div>
+          </div>
           <div class="app-detail-grid">
             <section>
               <h3 data-i18n="apps.processes">子进程</h3>
@@ -127,9 +142,9 @@
               <h3 data-i18n="apps.connections">连接</h3>
               <p class="connection-mode" data-i18n="apps.connectionMode">基础模式 · IP 级，部分域名经反查获得</p>
               <div class="table-wrap app-detail-table"><table><thead><tr>
-                <th data-i18n="apps.destination">域名 / IP:端口</th>
-                <th data-i18n="apps.network">网络 ↑↓</th><th data-i18n="apps.rtt">RTT</th>
-                <th data-i18n="apps.proxy">代理</th>
+                <th data-i18n="apps.domain">域名</th><th data-i18n="apps.ip">IP</th>
+                <th data-i18n="apps.port">端口</th><th data-i18n="apps.rate">↑↓速率</th>
+                <th data-i18n="apps.rtt">RTT</th><th data-i18n="apps.egress">出口</th>
               </tr></thead><tbody id="app-connection-body"></tbody></table></div>
             </section>
           </div>

@@ -281,6 +281,7 @@ def create_app(
         app: str,
         window: int = Query(3600, ge=60, le=7 * 24 * 60 * 60),
     ) -> dict:
+        db = active_db()
         live_processes = list_application_processes()
         groups = group_captured_processes(live_processes)
         pids = next(
@@ -310,13 +311,29 @@ def create_app(
                 "via_proxy": row["via_proxy"],
                 "proxy_name": row["proxy_name"],
             }
-            for row in active_db().latest_app_connections(app)
+            for row in db.latest_app_connections(app)
         ]
         return {
             "app": app,
             "processes": processes,
-            "history": active_db().app_history(app, end - window, end),
+            "history": db.app_history(app, end - window, end),
+            "process_names": db.app_process_names(app, end - window, end),
             "connections": connections,
+        }
+
+    @application.get("/api/apps/{app}/process-history")
+    def app_process_history(
+        app: str,
+        name: str = Query(..., min_length=1, max_length=200),
+        window: int = Query(3600, ge=60, le=7 * 24 * 60 * 60),
+    ) -> dict:
+        end = int(time.time())
+        return {
+            "app": app,
+            "name": name,
+            "history": active_db().app_process_history(
+                app, name, end - window, end
+            ),
         }
 
     @application.get("/api/events")

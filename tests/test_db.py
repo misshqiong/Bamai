@@ -21,6 +21,7 @@ def test_schema_and_round_trip(db):
         "process_snapshots",
         "process_net",
         "app_snapshots",
+        "app_process_snapshots",
         "app_connections",
         "disk_usage",
         "events",
@@ -59,14 +60,19 @@ def test_cleanup_aggregates_and_applies_retention(db):
     db.insert_process_net(now - config.PROCESS_RETENTION_SECONDS - 1, [{
         "pid": 1, "name": "old", "up_bps": 1, "down_bps": 1
     }])
-    db.insert_app_snapshots(now - config.PROCESS_RETENTION_SECONDS - 1, [{
+    old_app_ts = now - config.APP_RETENTION_SECONDS - 1
+    db.insert_app_snapshots(old_app_ts, [{
         "app": "Old", "kind": "app", "cpu_percent": 1, "memory_rss": 1,
         "proc_count": 1, "up_bps": 1, "down_bps": 1,
     }])
-    db.insert_app_connections(now - config.PROCESS_RETENTION_SECONDS - 1, [{
+    db.insert_app_connections(old_app_ts, [{
         "app": "Old", "remote_ip": "1.1.1.1", "remote_port": 443,
         "domain": "one.one.one.one", "proto": "tcp", "up_bps": 1,
         "down_bps": 1, "rtt_ms": 10, "via_proxy": 0, "proxy_name": None,
+    }])
+    db.insert_app_process_snapshots(old_app_ts, [{
+        "app": "Old", "name": "old", "cpu_percent": 1,
+        "memory_rss": 1, "proc_count": 1,
     }])
     db.insert_disk_usage(now - config.DISK_RETENTION_SECONDS - 1, [{
         "mount": "/", "total": 100, "used": 50, "percent": 50
@@ -85,6 +91,9 @@ def test_cleanup_aggregates_and_applies_retention(db):
         assert conn.execute("SELECT COUNT(*) FROM process_net").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM app_snapshots").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM app_connections").fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM app_process_snapshots"
+        ).fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM disk_usage").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 0
 
@@ -114,3 +123,44 @@ def test_app_snapshot_connection_queries_and_history(db):
     connections = db.latest_app_connections("Google Chrome")
     assert connections[0]["remote_port"] == 7890
     assert connections[0]["proxy_name"] == "ClashX"
+
+
+def test_app_process_snapshot_history_downsampling_and_names(db):
+    for ts, renderer_cpu, renderer_memory, renderer_count in (
+        (100, 10.0, 1000, 1),
+        (160, 30.0, 3000, 3),
+        (220, 20.0, 2000, 2),
+    ):
+        db.insert_app_process_snapshots(ts, [
+            {
+                "app": "Google Chrome", "name": "Chrome Helper (Renderer)",
+                "cpu_percent": renderer_cpu, "memory_rss": renderer_memory,
+                "proc_count": renderer_count,
+            },
+            {
+                "app": "Google Chrome", "name": "Google Chrome",
+                "cpu_percent": 5.0, "memory_rss": 5000, "proc_count": 1,
+            },
+        ])
+
+    history = db.app_process_history(
+        "Google Chrome", "Chrome Helper (Renderer)", 0, 300, max_points=2
+    )
+    assert history == [
+        {
+            "ts": 100, "app": "Google Chrome", "name": "Chrome Helper (Renderer)",
+            "cpu_percent": 20.0, "memory_rss": 2000, "proc_count": 2,
+        },
+        {
+            "ts": 220, "app": "Google Chrome", "name": "Chrome Helper (Renderer)",
+            "cpu_percent": 20.0, "memory_rss": 2000, "proc_count": 2,
+        },
+    ]
+    assert db.app_process_names("Google Chrome", 0, 300) == [
+        {
+            "name": "Chrome Helper (Renderer)",
+            "peak_cpu": 30.0,
+            "peak_memory_rss": 3000,
+        },
+        {"name": "Google Chrome", "peak_cpu": 5.0, "peak_memory_rss": 5000},
+    ]

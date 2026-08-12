@@ -199,3 +199,61 @@ def test_collector_uses_one_connection_nettop_call_and_aggregates_apps(db, monke
     assert connection["via_proxy"] == 1
     assert connection["proxy_name"] == "ClashX"
     collector._reverse_dns.close()
+
+
+def test_collect_apps_writes_process_name_aggregates():
+    class RecordingDb:
+        def __init__(self):
+            self.process_rows = []
+
+        def insert_app_snapshots(self, ts, rows):
+            pass
+
+        def insert_app_process_snapshots(self, ts, rows):
+            self.process_rows = list(rows)
+
+        def insert_app_connections(self, ts, rows):
+            pass
+
+    recording_db = RecordingDb()
+    collector = Collector(recording_db, rules=object())
+    collector._reverse_dns.close()
+    collector._reverse_dns = ReverseDnsCache(start_worker=False)
+    collector._latest_processes = [
+        {
+            "pid": 10, "ppid": 0, "name": "Chrome", "cpu_percent": 5,
+            "memory_rss": 100, "cmdline": "chrome",
+            "exe": "/Applications/Google Chrome.app/Contents/MacOS/Chrome",
+        },
+        {
+            "pid": 11, "ppid": 10, "name": "Chrome Helper (Renderer)",
+            "cpu_percent": 2, "memory_rss": 50, "cmdline": "renderer", "exe": "",
+        },
+        {
+            "pid": 12, "ppid": 10, "name": "Chrome Helper (Renderer)",
+            "cpu_percent": 3, "memory_rss": 60, "cmdline": "renderer", "exe": "",
+        },
+        {
+            "pid": 13, "ppid": 10, "name": "Chrome Helper (GPU)",
+            "cpu_percent": 4, "memory_rss": 70, "cmdline": "gpu", "exe": "",
+        },
+    ]
+
+    collector._collect_apps(100)
+
+    rows = {row["name"]: row for row in recording_db.process_rows}
+    assert rows == {
+        "Chrome": {
+            "app": "Google Chrome", "name": "Chrome", "cpu_percent": 5.0,
+            "memory_rss": 100, "proc_count": 1,
+        },
+        "Chrome Helper (Renderer)": {
+            "app": "Google Chrome", "name": "Chrome Helper (Renderer)",
+            "cpu_percent": 5.0, "memory_rss": 110, "proc_count": 2,
+        },
+        "Chrome Helper (GPU)": {
+            "app": "Google Chrome", "name": "Chrome Helper (GPU)",
+            "cpu_percent": 4.0, "memory_rss": 70, "proc_count": 1,
+        },
+    }
+    collector._reverse_dns.close()

@@ -485,6 +485,9 @@ class Collector:
 
     def _collect_apps(self, ts: int) -> None:
         groups = group_captured_processes(self._latest_processes)
+        processes_by_pid = {
+            int(process["pid"]): process for process in self._latest_processes
+        }
         pid_apps = {
             pid: group["app"]
             for group in groups
@@ -554,6 +557,7 @@ class Collector:
             )
 
         snapshots = []
+        process_snapshots = []
         for group in groups:
             up_bps, down_bps = app_network.get(group["app"], (0.0, 0.0))
             snapshots.append({
@@ -561,7 +565,25 @@ class Collector:
                 "up_bps": up_bps,
                 "down_bps": down_bps,
             })
+            by_name: dict[str, dict[str, Any]] = {}
+            for pid in group["pids"]:
+                process = processes_by_pid.get(pid)
+                if process is None:
+                    continue
+                name = str(process.get("name") or "未知")
+                item = by_name.setdefault(name, {
+                    "app": group["app"],
+                    "name": name,
+                    "cpu_percent": 0.0,
+                    "memory_rss": 0,
+                    "proc_count": 0,
+                })
+                item["cpu_percent"] += float(process.get("cpu_percent") or 0)
+                item["memory_rss"] += int(process.get("memory_rss") or 0)
+                item["proc_count"] += 1
+            process_snapshots.extend(by_name.values())
         self.db.insert_app_snapshots(ts, snapshots)
+        self.db.insert_app_process_snapshots(ts, process_snapshots)
         self.db.insert_app_connections(ts, connections)
 
 

@@ -116,6 +116,11 @@ def test_app_diagnosis_tools_use_shared_live_and_database_data(db):
         "domain": None, "proto": "tcp", "up_bps": 200, "down_bps": 300,
         "rtt_ms": 1.5, "via_proxy": 1, "proxy_name": "Proxy App",
     }])
+    for ts, cpu, memory in ((100, 4, 400), (200, 8, 800)):
+        db.insert_app_process_snapshots(ts, [{
+            "app": "Example", "name": "Example Renderer", "cpu_percent": cpu,
+            "memory_rss": memory, "proc_count": 2,
+        }])
     live = [{
         "pid": 7, "ppid": 0, "name": "Example", "cpu_percent": 12.6,
         "memory_rss": 2500, "cmdline": "example", "argv0": "example",
@@ -136,6 +141,15 @@ def test_app_diagnosis_tools_use_shared_live_and_database_data(db):
     assert history.data["summary"]["memory_rss"] == {
         "min": 1000, "max": 3000, "avg": 2000,
     }
+    process_history = tools.execute("get_app_history", {
+        "app": "Example", "process_name": "Example Renderer",
+        "start_ts": 0, "end_ts": 300,
+    })
+    assert process_history.data["process_name"] == "Example Renderer"
+    assert process_history.data["summary"]["cpu_percent"] == {
+        "min": 4, "max": 8, "avg": 6,
+    }
+    assert "子进程“Example Renderer”" in process_history.summary
     connections = tools.execute("get_app_connections", {"app": "Example"})
     assert connections.data["connections"][0]["remote_port"] == 7890
     assert "不代表真实网络延迟" in connections.data["note"]
@@ -173,6 +187,13 @@ def test_app_diagnosis_tool_validation_and_probe_allowlist(db):
     assert {definition["function"]["name"] for definition in TOOL_DEFINITIONS} >= {
         "get_app_overview", "get_app_history", "get_app_connections",
     }
+    app_history = next(
+        definition["function"]
+        for definition in TOOL_DEFINITIONS
+        if definition["function"]["name"] == "get_app_history"
+    )
+    assert "process_name" in app_history["parameters"]["properties"]
+    assert app_history["parameters"]["required"] == ["app", "start_ts", "end_ts"]
 
 
 def test_agent_tool_parameter_validation(db):

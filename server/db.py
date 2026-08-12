@@ -27,6 +27,14 @@ METRIC_COLUMNS = {
 
 HOURLY_COLUMNS = tuple(sorted(METRIC_COLUMNS))
 
+_APP_HISTORY_AVERAGE_FIELDS = (
+    "cpu_percent",
+    "memory_rss",
+    "proc_count",
+    "up_bps",
+    "down_bps",
+)
+
 
 class Database:
     """轻量 SQLite 封装；每次操作使用独立连接，安全跨线程。"""
@@ -90,6 +98,15 @@ class Database:
         );
         CREATE INDEX IF NOT EXISTS idx_app_snapshots_ts ON app_snapshots(ts);
         CREATE INDEX IF NOT EXISTS idx_app_snapshots_app ON app_snapshots(app, ts);
+        CREATE TABLE IF NOT EXISTS app_process_snapshots(
+            ts INTEGER NOT NULL, app TEXT NOT NULL, name TEXT NOT NULL,
+            cpu_percent REAL NOT NULL, memory_rss INTEGER NOT NULL,
+            proc_count INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_app_process_snapshots_app
+            ON app_process_snapshots(app, name, ts);
+        CREATE INDEX IF NOT EXISTS idx_app_process_snapshots_ts
+            ON app_process_snapshots(ts);
         CREATE TABLE IF NOT EXISTS app_connections(
             ts INTEGER NOT NULL, app TEXT NOT NULL, remote_ip TEXT NOT NULL,
             remote_port INTEGER NOT NULL, domain TEXT, proto TEXT NOT NULL,
@@ -196,6 +213,24 @@ class Database:
         with self._write_lock, self.connect() as conn:
             conn.executemany(
                 "INSERT INTO app_connections VALUES(?,?,?,?,?,?,?,?,?,?,?)", values
+            )
+
+    def insert_app_process_snapshots(
+        self, ts: int, rows: Iterable[Mapping[str, Any]]
+    ) -> None:
+        values = [
+            (
+                ts, str(row["app"]), str(row["name"]),
+                float(row["cpu_percent"]), int(row["memory_rss"]),
+                int(row["proc_count"]),
+            )
+            for row in rows
+        ]
+        if not values:
+            return
+        with self._write_lock, self.connect() as conn:
+            conn.executemany(
+                "INSERT INTO app_process_snapshots VALUES(?,?,?,?,?,?)", values
             )
 
     def insert_disk_usage(self, ts: int, rows: Iterable[Mapping[str, Any]]) -> None:
@@ -340,7 +375,6 @@ class Database:
     ) -> list[dict[str, Any]]:
         if end < start:
             raise ValueError("end 必须大于等于 start")
-        max_points = max(1, min(int(max_points), 5000))
         with self.connect(read_only=True) as conn:
             rows = conn.execute(
                 "SELECT * FROM app_snapshots "
@@ -348,23 +382,71 @@ class Database:
                 (app, int(start), int(end)),
             ).fetchall()
         points = [dict(row) for row in rows]
+        return self._downsample_app_history(points, max_points)
+
+    @staticmethod
+    def _downsample_app_history(
+        points: Sequence[Mapping[str, Any]], max_points: int
+    ) -> list[dict[str, Any]]:
+        """按相同规则压缩应用整体或子进程历史。"""
+        max_points = max(1, min(int(max_points), 5000))
         if len(points) <= max_points:
-            return points
+            return [dict(point) for point in points]
         size = math.ceil(len(points) / max_points)
         compact: list[dict[str, Any]] = []
         for offset in range(0, len(points), size):
             group = points[offset:offset + size]
-            compact.append({
-                "ts": group[0]["ts"],
-                "app": app,
-                "kind": group[-1]["kind"],
-                "cpu_percent": sum(row["cpu_percent"] for row in group) / len(group),
-                "memory_rss": int(sum(row["memory_rss"] for row in group) / len(group)),
-                "proc_count": int(round(sum(row["proc_count"] for row in group) / len(group))),
-                "up_bps": sum(row["up_bps"] for row in group) / len(group),
-                "down_bps": sum(row["down_bps"] for row in group) / len(group),
-            })
+            point: dict[str, Any] = {}
+            for field, value in group[-1].items():
+                if field == "ts":
+                    point[field] = group[0][field]
+                elif field in _APP_HISTORY_AVERAGE_FIELDS:
+                    average = sum(float(row[field]) for row in group) / len(group)
+                    if field == "memory_rss":
+                        point[field] = int(average)
+                    elif field == "proc_count":
+                        point[field] = int(round(average))
+                    else:
+                        point[field] = average
+                else:
+                    point[field] = value
+            compact.append(point)
         return compact
+
+    def app_process_history(
+        self,
+        app: str,
+        name: str,
+        start: int,
+        end: int,
+        max_points: int = config.MAX_CHART_POINTS,
+    ) -> list[dict[str, Any]]:
+        if end < start:
+            raise ValueError("end 必须大于等于 start")
+        with self.connect(read_only=True) as conn:
+            rows = conn.execute(
+                "SELECT * FROM app_process_snapshots "
+                "WHERE app=? AND name=? AND ts BETWEEN ? AND ? ORDER BY ts",
+                (app, name, int(start), int(end)),
+            ).fetchall()
+        return self._downsample_app_history([dict(row) for row in rows], max_points)
+
+    def app_process_names(
+        self, app: str, start: int, end: int, limit: int = 30
+    ) -> list[dict[str, Any]]:
+        if end < start:
+            raise ValueError("end 必须大于等于 start")
+        limit = max(1, min(int(limit), 100))
+        with self.connect(read_only=True) as conn:
+            rows = conn.execute(
+                "SELECT name, MAX(cpu_percent) AS peak_cpu, "
+                "MAX(memory_rss) AS peak_memory_rss "
+                "FROM app_process_snapshots "
+                "WHERE app=? AND ts BETWEEN ? AND ? GROUP BY name "
+                "ORDER BY peak_cpu DESC, peak_memory_rss DESC, name LIMIT ?",
+                (app, int(start), int(end), limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def latest_app_connections(
         self, app: str, limit: int = 50
@@ -503,8 +585,10 @@ class Database:
             process_cutoff = now - config.PROCESS_RETENTION_SECONDS
             conn.execute("DELETE FROM process_snapshots WHERE ts < ?", (process_cutoff,))
             conn.execute("DELETE FROM process_net WHERE ts < ?", (process_cutoff,))
-            conn.execute("DELETE FROM app_snapshots WHERE ts < ?", (process_cutoff,))
-            conn.execute("DELETE FROM app_connections WHERE ts < ?", (process_cutoff,))
+            app_cutoff = now - config.APP_RETENTION_SECONDS
+            conn.execute("DELETE FROM app_snapshots WHERE ts < ?", (app_cutoff,))
+            conn.execute("DELETE FROM app_connections WHERE ts < ?", (app_cutoff,))
+            conn.execute("DELETE FROM app_process_snapshots WHERE ts < ?", (app_cutoff,))
             conn.execute(
                 "DELETE FROM disk_usage WHERE ts < ?", (now - config.DISK_RETENTION_SECONDS,)
             )

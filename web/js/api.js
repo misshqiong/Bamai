@@ -22,6 +22,7 @@ export const api = {
   processNet: () => request("/api/processes/net"),
   apps: (sort, limit = 30) => request(`/api/apps?${new URLSearchParams({sort, limit})}`),
   appDetail: (app, window = 3600) => request(`/api/apps/${encodeURIComponent(app)}/detail?${new URLSearchParams({window})}`),
+  appProcessHistory: (app, name, window = 3600) => request(`/api/apps/${encodeURIComponent(app)}/process-history?${new URLSearchParams({name, window})}`),
   events: (limit = 50) => request(`/api/events?limit=${limit}`),
   health: () => request("/api/health"),
   explainHealth: () => request("/api/health/explain", {method: "POST"}),

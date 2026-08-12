@@ -86,7 +86,9 @@ def test_apps_view_keys_exist_in_both_languages():
         "nav.apps", "apps.title", "apps.name", "apps.cpu", "apps.memory",
         "apps.network", "apps.processCount", "apps.background", "apps.history",
         "apps.processes", "apps.connections", "apps.connectionMode",
-        "apps.destination", "apps.rtt", "apps.proxy",
+        "apps.destination", "apps.domain", "apps.noDomain", "apps.ip", "apps.port",
+        "apps.rate", "apps.rtt", "apps.proxy", "apps.egress", "apps.egressDirect",
+        "apps.window.1h", "apps.window.6h", "apps.window.24h", "apps.series.total",
         "apps.diagnose", "apps.diagnosePrompt",
     }
     for language in ("zh", "en"):
